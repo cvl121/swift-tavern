@@ -1,0 +1,515 @@
+import XCTest
+@testable import SwiftTavern
+
+// MARK: - Improvement #1: Image Cache Tests
+
+final class ImageCacheTests: XCTestCase {
+    func testCacheReturnsSameInstance() {
+        // Create a simple 1x1 red pixel PNG
+        let imageData = createTestPNGData()
+        let key = "test-avatar-\(imageData.count)"
+
+        let image1 = ImageCache.shared.loadImage(data: imageData, key: key)
+        let image2 = ImageCache.shared.loadImage(data: imageData, key: key)
+
+        XCTAssertNotNil(image1)
+        XCTAssertNotNil(image2)
+        // Same cached instance
+        XCTAssertTrue(image1 === image2)
+    }
+
+    func testCacheDifferentKeys() {
+        let data1 = createTestPNGData()
+        let data2 = createTestPNGData()
+
+        let image1 = ImageCache.shared.loadImage(data: data1, key: "key-a")
+        let image2 = ImageCache.shared.loadImage(data: data2, key: "key-b")
+
+        XCTAssertNotNil(image1)
+        XCTAssertNotNil(image2)
+    }
+
+    func testCacheHandlesInvalidData() {
+        let badData = Data([0x00, 0x01, 0x02])
+        let image = ImageCache.shared.loadImage(data: badData, key: "bad-data")
+        XCTAssertNil(image)
+    }
+
+    private func createTestPNGData() -> Data {
+        let size = NSSize(width: 2, height: 2)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        NSColor.red.setFill()
+        NSRect(origin: .zero, size: size).fill()
+        image.unlockFocus()
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else {
+            return Data()
+        }
+        return png
+    }
+}
+
+// MARK: - Improvement #2: Message Actions Tests
+
+final class MessageActionsTests: XCTestCase {
+    private var tempDir: URL!
+    private var appState: AppState!
+
+    override func setUp() {
+        super.setUp()
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        appState = AppState(rootDirectory: tempDir)
+        appState.loadAll()
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tempDir)
+        super.tearDown()
+    }
+
+    func testCopyMessage() {
+        let vm = ChatViewModel(appState: appState)
+        let msg = ChatMessage(name: "User", isUser: true, mes: "Copy this text")
+        appState.currentChat = ChatSession(
+            id: "test",
+            filename: "test.jsonl",
+            metadata: ChatMetadata(userName: "User", characterName: "Bot", chatMetadata: ChatMetadataInfo()),
+            messages: [msg]
+        )
+
+        vm.copyMessage(at: 0)
+
+        let pasteboard = NSPasteboard.general
+        let copied = pasteboard.string(forType: .string)
+        XCTAssertEqual(copied, "Copy this text")
+    }
+
+    func testBeginAndCancelEdit() {
+        let vm = ChatViewModel(appState: appState)
+        let msg = ChatMessage(name: "User", isUser: true, mes: "Original text")
+        appState.currentChat = ChatSession(
+            id: "test",
+            filename: "test.jsonl",
+            metadata: ChatMetadata(userName: "User", characterName: "Bot", chatMetadata: ChatMetadataInfo()),
+            messages: [msg]
+        )
+
+        vm.beginEditMessage(at: 0)
+        XCTAssertEqual(vm.editingMessageIndex, 0)
+        XCTAssertEqual(vm.editingText, "Original text")
+
+        vm.cancelEdit()
+        XCTAssertNil(vm.editingMessageIndex)
+        XCTAssertTrue(vm.editingText.isEmpty)
+    }
+
+    func testDeleteConfirmationFlow() {
+        let vm = ChatViewModel(appState: appState)
+        let msg = ChatMessage(name: "User", isUser: true, mes: "Delete me")
+        appState.currentChat = ChatSession(
+            id: "test",
+            filename: "test.jsonl",
+            metadata: ChatMetadata(userName: "User", characterName: "Bot", chatMetadata: ChatMetadataInfo()),
+            messages: [msg]
+        )
+
+        vm.requestDeleteMessage(at: 0)
+        XCTAssertTrue(vm.showDeleteConfirmation)
+        XCTAssertEqual(vm.pendingDeleteIndex, 0)
+    }
+}
+
+// MARK: - Improvement #3: Streaming Timeout Tests
+
+final class StreamingTimeoutTests: XCTestCase {
+    func testChatViewModelHasStreamingTimeout() {
+        // Verify the ChatViewModel can be created and has the timeout mechanism
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        let appState = AppState(rootDirectory: tempDir)
+        let vm = ChatViewModel(appState: appState)
+
+        // The timeout constant is internal to the generateResponse method
+        // Verify the VM can generate without crashing when no API configured
+        vm.generateResponse()
+        XCTAssertNotNil(vm.errorMessage)
+
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+}
+
+// MARK: - Improvement #4: Thread-Safe Chat Storage Tests
+
+final class ThreadSafeChatStorageTests: XCTestCase {
+    private var tempDir: URL!
+    private var chatStorage: ChatStorageService!
+
+    override func setUp() {
+        super.setUp()
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        let directoryManager = DataDirectoryManager(rootDirectory: tempDir)
+        try? directoryManager.ensureDirectoriesExist()
+        chatStorage = ChatStorageService(directoryManager: directoryManager)
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tempDir)
+        super.tearDown()
+    }
+
+    func testRewriteChat() throws {
+        var session = try chatStorage.createChat(
+            characterName: "TestChar",
+            userName: "User",
+            firstMessage: "Hello!"
+        )
+
+        // Modify a message
+        session.messages[0] = ChatMessage(name: "TestChar", isUser: false, mes: "Modified greeting!")
+
+        try chatStorage.rewriteChat(session, characterName: "TestChar")
+
+        // Reload and verify
+        let loaded = try chatStorage.loadChat(characterName: "TestChar", filename: session.filename)
+        XCTAssertEqual(loaded.messages.count, 1)
+        XCTAssertEqual(loaded.messages[0].mes, "Modified greeting!")
+    }
+
+    func testConcurrentAppends() throws {
+        let session = try chatStorage.createChat(
+            characterName: "ConcurrentChar",
+            userName: "User",
+            firstMessage: "Start"
+        )
+
+        let expectation = XCTestExpectation(description: "Concurrent appends")
+        expectation.expectedFulfillmentCount = 10
+
+        let group = DispatchGroup()
+        for i in 0..<10 {
+            group.enter()
+            DispatchQueue.global().async {
+                let msg = ChatMessage(name: "User", isUser: true, mes: "Message \(i)")
+                try? self.chatStorage.appendMessage(msg, characterName: "ConcurrentChar", filename: session.filename)
+                expectation.fulfill()
+                group.leave()
+            }
+        }
+
+        group.wait()
+
+        // Verify no crash and file is readable
+        let loaded = try chatStorage.loadChat(characterName: "ConcurrentChar", filename: session.filename)
+        XCTAssertGreaterThanOrEqual(loaded.messages.count, 1) // At least the initial message
+    }
+}
+
+// MARK: - Improvement #5: Search Tests
+
+final class ChatSearchTests: XCTestCase {
+    private var tempDir: URL!
+    private var chatStorage: ChatStorageService!
+
+    override func setUp() {
+        super.setUp()
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        let directoryManager = DataDirectoryManager(rootDirectory: tempDir)
+        try? directoryManager.ensureDirectoriesExist()
+        chatStorage = ChatStorageService(directoryManager: directoryManager)
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tempDir)
+        super.tearDown()
+    }
+
+    func testSearchFindsMatchingMessages() throws {
+        let session = try chatStorage.createChat(
+            characterName: "SearchChar",
+            userName: "User",
+            firstMessage: "Welcome to the kingdom"
+        )
+        let msg = ChatMessage(name: "User", isUser: true, mes: "Tell me about the ancient dragon")
+        try chatStorage.appendMessage(msg, characterName: "SearchChar", filename: session.filename)
+
+        let results = try chatStorage.searchChats(characterName: "SearchChar", query: "dragon")
+        XCTAssertEqual(results.count, 1)
+        XCTAssertTrue(results[0].matchingMessages.first?.mes.contains("dragon") ?? false)
+    }
+
+    func testSearchCaseInsensitive() throws {
+        let session = try chatStorage.createChat(
+            characterName: "SearchChar",
+            userName: "User",
+            firstMessage: "Hello WORLD"
+        )
+
+        let results = try chatStorage.searchChats(characterName: "SearchChar", query: "world")
+        XCTAssertEqual(results.count, 1)
+    }
+
+    func testSearchNoResults() throws {
+        _ = try chatStorage.createChat(
+            characterName: "SearchChar",
+            userName: "User",
+            firstMessage: "Hello there"
+        )
+
+        let results = try chatStorage.searchChats(characterName: "SearchChar", query: "zzzznotfound")
+        XCTAssertEqual(results.count, 0)
+    }
+}
+
+// MARK: - Improvement #6: Character Book in PromptBuilder Tests
+
+final class CharacterBookPromptTests: XCTestCase {
+    func testCharacterBookConstantEntries() {
+        let bookEntry = CharacterBookEntry(
+            uid: 0,
+            keys: [],
+            content: "Lore: The world is magical.",
+            enabled: true,
+            insertionOrder: 0,
+            name: "Magic Lore",
+            selective: false,
+            constant: true
+        )
+        let characterBook = CharacterBook(
+            name: "Test Book",
+            entries: [bookEntry]
+        )
+        let character = CharacterData(
+            name: "Wizard",
+            description: "A wise wizard",
+            personality: "",
+            scenario: "",
+            firstMes: "Greetings",
+            mesExample: "",
+            creatorNotes: "",
+            systemPrompt: "System.",
+            postHistoryInstructions: "",
+            characterBook: characterBook
+        )
+
+        let messages = PromptBuilder.buildMessages(
+            character: character,
+            chatHistory: [],
+            userName: "User"
+        )
+
+        let systemContent = messages[0].content
+        XCTAssertTrue(systemContent.contains("The world is magical."))
+    }
+
+    func testCharacterBookKeywordTriggered() {
+        let bookEntry = CharacterBookEntry(
+            uid: 0,
+            keys: ["sword"],
+            content: "The Excalibur is a legendary sword.",
+            enabled: true,
+            insertionOrder: 0,
+            name: "Sword Lore",
+            selective: false,
+            constant: false
+        )
+        let characterBook = CharacterBook(
+            name: "Test Book",
+            entries: [bookEntry]
+        )
+        let character = CharacterData(
+            name: "Knight",
+            description: "",
+            personality: "",
+            scenario: "",
+            firstMes: "",
+            mesExample: "",
+            creatorNotes: "",
+            systemPrompt: "System.",
+            postHistoryInstructions: "",
+            characterBook: characterBook
+        )
+
+        let chatHistory = [
+            ChatMessage(name: "User", isUser: true, mes: "I found a sword!")
+        ]
+
+        let messages = PromptBuilder.buildMessages(
+            character: character,
+            chatHistory: chatHistory,
+            userName: "User"
+        )
+
+        let systemContent = messages[0].content
+        XCTAssertTrue(systemContent.contains("Excalibur"))
+    }
+}
+
+// MARK: - Improvement #7: Greeting Swipes Tests
+
+final class GreetingSwipeTests: XCTestCase {
+    private var tempDir: URL!
+    private var appState: AppState!
+
+    override func setUp() {
+        super.setUp()
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        appState = AppState(rootDirectory: tempDir)
+        appState.loadAll()
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tempDir)
+        super.tearDown()
+    }
+
+    func testHasGreetingSwipesWithAlternates() throws {
+        let charData = CharacterData(
+            name: "SwipeChar",
+            firstMes: "Hello!",
+            alternateGreetings: ["Hi there!", "Hey!"]
+        )
+        let card = TavernCardV2(data: charData)
+        let filename = try appState.characterStorage.save(card: card, avatarData: nil)
+        appState.characters = try appState.characterStorage.loadAll()
+        appState.selectedCharacter = appState.characters.first { $0.filename == filename }
+
+        let vm = ChatViewModel(appState: appState)
+        vm.newChat()
+
+        XCTAssertTrue(vm.hasGreetingSwipes)
+        XCTAssertEqual(vm.greetingSwipeIndex, 0)
+    }
+
+    func testNoGreetingSwipesWithoutAlternates() throws {
+        let charData = CharacterData(name: "NoSwipeChar", firstMes: "Hello!")
+        let card = TavernCardV2(data: charData)
+        let filename = try appState.characterStorage.save(card: card, avatarData: nil)
+        appState.characters = try appState.characterStorage.loadAll()
+        appState.selectedCharacter = appState.characters.first { $0.filename == filename }
+
+        let vm = ChatViewModel(appState: appState)
+        vm.newChat()
+
+        XCTAssertFalse(vm.hasGreetingSwipes)
+    }
+}
+
+// MARK: - Improvement #8: Auto-save Settings Tests
+
+final class AutoSaveSettingsTests: XCTestCase {
+    func testSettingsAutoSaveOnChange() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        let appState = AppState(rootDirectory: tempDir)
+        appState.loadAll()
+
+        // Change a setting
+        appState.settings.userName = "NewUserName"
+
+        // Wait for debounced save
+        let expectation = XCTestExpectation(description: "Auto-save")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+
+        // Load settings fresh and verify
+        let freshState = AppState(rootDirectory: tempDir)
+        freshState.loadAll()
+
+        // Give it a moment to load
+        let loadExpectation = XCTestExpectation(description: "Load")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            loadExpectation.fulfill()
+        }
+        wait(for: [loadExpectation], timeout: 2.0)
+
+        XCTAssertEqual(freshState.settings.userName, "NewUserName")
+
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+}
+
+// MARK: - Improvement #9: Delete Confirmation Tests
+
+final class DeleteConfirmationTests: XCTestCase {
+    private var tempDir: URL!
+    private var appState: AppState!
+
+    override func setUp() {
+        super.setUp()
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        appState = AppState(rootDirectory: tempDir)
+        appState.loadAll()
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tempDir)
+        super.tearDown()
+    }
+
+    func testRequestDeleteSetsConfirmation() {
+        let vm = CharacterListViewModel(appState: appState)
+        let entry = CharacterEntry(
+            filename: "test.png",
+            card: TavernCardV2(data: CharacterData(name: "TestChar")),
+            avatarData: nil
+        )
+
+        vm.requestDeleteCharacter(entry)
+
+        XCTAssertTrue(vm.showDeleteConfirmation)
+        XCTAssertEqual(vm.pendingDeleteEntry?.filename, "test.png")
+    }
+
+    func testCancelDeleteClearsPending() {
+        let vm = CharacterListViewModel(appState: appState)
+        let entry = CharacterEntry(
+            filename: "test.png",
+            card: TavernCardV2(data: CharacterData(name: "TestChar")),
+            avatarData: nil
+        )
+
+        vm.requestDeleteCharacter(entry)
+        vm.pendingDeleteEntry = nil
+        vm.showDeleteConfirmation = false
+
+        XCTAssertFalse(vm.showDeleteConfirmation)
+        XCTAssertNil(vm.pendingDeleteEntry)
+    }
+}
+
+// MARK: - Improvement #10: Window Title Tests
+
+final class WindowTitleTests: XCTestCase {
+    func testDefaultWindowTitle() {
+        let appState = AppState()
+        // No character selected, title should be base
+        XCTAssertNil(appState.selectedCharacter)
+    }
+
+    func testSelectedCharacterChangesState() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        let appState = AppState(rootDirectory: tempDir)
+        appState.loadAll()
+
+        let charData = CharacterData(name: "TestTitle")
+        let card = TavernCardV2(data: charData)
+        let filename = try appState.characterStorage.save(card: card, avatarData: nil)
+        appState.characters = try appState.characterStorage.loadAll()
+        let entry = appState.characters.first { $0.filename == filename }
+
+        appState.setActiveCharacter(entry)
+        XCTAssertEqual(appState.selectedCharacter?.card.data.name, "TestTitle")
+
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+}

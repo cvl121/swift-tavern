@@ -1,0 +1,127 @@
+import SwiftUI
+
+/// Sheet for editing chat message text styling (colors, font size)
+struct ChatStyleEditorView: View {
+    @Binding var chatStyle: ChatStyle
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            HStack {
+                Text("Chat Style")
+                    .font(.title2.bold())
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+            .padding()
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Customize how chat message text is displayed. Colors apply to character (assistant) messages.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+
+                    // Font size
+                    HStack {
+                        Text("Font Size")
+                            .font(.system(size: 12, weight: .medium))
+                        Spacer()
+                        TextField("", value: $chatStyle.fontSize, format: .number.precision(.fractionLength(0)))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    Slider(value: $chatStyle.fontSize, in: 10...24, step: 1)
+
+                    Divider()
+
+                    // Quoted text color
+                    colorPicker(
+                        title: "Quoted Text Color",
+                        description: "Color for text in \"double quotes\" (dialogue)",
+                        color: $chatStyle.quotedTextColor
+                    )
+
+                    // Action text color
+                    colorPicker(
+                        title: "Action/Emote Color",
+                        description: "Color for text in *asterisks* (actions, emotes)",
+                        color: $chatStyle.italicActionColor
+                    )
+
+                    // Narrative text color
+                    colorPicker(
+                        title: "Narrative Text Color",
+                        description: "Color for regular narrative text",
+                        color: $chatStyle.narrativeColor
+                    )
+
+                    Divider()
+
+                    // Preview
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Preview")
+                            .font(.headline)
+
+                        MarkdownTextView(
+                            text: "*She leans against the doorframe, arms crossed.* \"Hey, I was wondering when you'd show up.\" She smiles warmly and steps aside to let you in.",
+                            chatStyle: chatStyle
+                        )
+                        .font(.system(size: chatStyle.fontSize))
+                        .padding(10)
+                        .background(Color(.controlBackgroundColor))
+                        .cornerRadius(12)
+                    }
+
+                    Divider()
+
+                    // Reset
+                    HStack {
+                        Spacer()
+                        Button("Reset to Defaults") {
+                            chatStyle = .default
+                        }
+                        .controlSize(.small)
+                    }
+                }
+                .padding(20)
+            }
+        }
+        .frame(width: 500, height: 550)
+    }
+
+    @ViewBuilder
+    private func colorPicker(title: String, description: String, color: Binding<CodableColor>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 12, weight: .medium))
+                    Text(description)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                ColorPicker("", selection: Binding(
+                    get: { Color(red: color.wrappedValue.r, green: color.wrappedValue.g, blue: color.wrappedValue.b, opacity: color.wrappedValue.a) },
+                    set: { newColor in
+                        if let components = NSColor(newColor).usingColorSpace(.sRGB) {
+                            color.wrappedValue = CodableColor(
+                                r: Double(components.redComponent),
+                                g: Double(components.greenComponent),
+                                b: Double(components.blueComponent),
+                                a: Double(components.alphaComponent)
+                            )
+                        }
+                    }
+                ))
+                .labelsHidden()
+            }
+        }
+    }
+}
