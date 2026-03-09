@@ -72,3 +72,176 @@ Template variables `{{char}}` and `{{user}}` are replaced via `String.replacingT
 - File naming: characters are `{sanitizedName}.png`, chats are `{CharName} - {timestamp}-{UUID}.jsonl`
 - Data directory: `~/Library/Application Support/SwiftTavern/`
 - Settings auto-save with 500ms debounce
+
+## Project Structure
+
+### Top-Level Files
+
+| File | Purpose |
+|------|---------|
+| `Package.swift` | SPM config: Swift 5.9, macOS 14+, executable target + test target, Yams dependency |
+| `CLAUDE.md` | Developer guidance, build commands, architecture overview, conventions |
+| `CHANGES.md` | Changelog for recent updates |
+| `.gitignore` | Ignores .build/, .swiftpm/, DerivedData/, .DS_Store, Package.resolved |
+| `Resources/AppIcon.icns` | Application icon |
+| `Resources/DefaultAvatar.png` | Fallback avatar image |
+
+### App Layer
+
+| File | Contents | Summary |
+|------|----------|---------|
+| `App/SwiftTavernApp.swift` | `SwiftTavernApp : App` | Entry point. WindowGroup with hiddenTitleBar (1200x750). Command menu: Cmd+N (new chat), Cmd+Shift+N (new character), Cmd+F (search), Cmd+, (settings). |
+| `App/AppState.swift` | `AppState : @Observable` | Central state container. Owns all storage services. Holds characters, selectedCharacter, currentChat, groups, worldInfoBooks, personas. Methods: `loadAll()`, `restoreSession()`, `scheduleSettingsSave()` (500ms debounce), `currentAPIConfiguration()`, `currentLLMService()`. Enum `SidebarItem` for navigation. |
+
+### Models
+
+| File | Contents | Summary |
+|------|----------|---------|
+| `Models/Character.swift` | `TavernCardV2`, `CharacterData`, `CharacterEntry`, `AnyCodable` | TavernCardV2 spec: name, description, personality, scenario, firstMes, mesExample, alternateGreetings, characterBook, systemPrompt, postHistoryInstructions, tags. `CharacterEntry` wraps a loaded card with filename + avatarData. |
+| `Models/ChatMessage.swift` | `ChatMessage`, `ChatMetadata`, `ChatSession` | Message: name, isUser, sendDate (ISO8601), mes (content), swipes (alternative responses). Metadata: userName, characterName, createDate. Session: metadata + messages array. |
+| `Models/APIConfiguration.swift` | `APIConfiguration` | Resolved config: apiType, apiKey, baseURL, model, generationParams. Property `effectiveBaseURL` resolves provider default. |
+| `Models/Settings.swift` | `AppTheme`, `AppSettings`, `APIType`, `APIConfigurationData` | AppSettings: activeAPI, userName, theme, chatStyle, advancedMode, experimentalFeatures, etc. APIType enum: openai/claude/gemini/ollama/openrouter with defaultModels, requiresAPIKey, keychainKey. |
+| `Models/CharacterBook.swift` | `CharacterBook`, `CharacterBookEntry`, `EntryPosition` | Embedded world info in character cards. Entries with keys, content, position, priority. EntryPosition: beforeChar/afterChar/beforeExample/afterExample/atDepth. |
+| `Models/WorldInfo.swift` | `WorldInfo`, `WorldInfoEntry` | Standalone world info books. Custom Codable handles SillyTavern field alternates (key/keys, order/insertion_order, disable/enabled). |
+| `Models/Persona.swift` | `Persona` | User identity: name, description, optional avatarFilename. |
+| `Models/Group.swift` | `CharacterGroup`, `GroupActivationStrategy` | Group chat config: members (character filenames), activation strategy (natural/roundRobin/random/manual). |
+| `Models/GenerationParameters.swift` | `GenerationParameters` | LLM params: maxTokens (2048), temperature (0.7), topP, topK, frequencyPenalty, presencePenalty, repetitionPenalty, stopSequences, streamResponse. |
+| `Models/ChatStyle.swift` | `ChatStyle`, `CodableColor` | Message display styling. Three text colors: quoted (dialogue), italic/action, narrative. Defaults for dark mode (`.default`) and light mode (`.lightDefault`). `adaptedForAppearance()` auto-switches if colors too bright for light mode. |
+
+### Services — LLM
+
+| File | Contents | Summary |
+|------|----------|---------|
+| `Services/LLM/LLMService.swift` | `LLMService` protocol, `LLMMessage`, `MessageRole`, `LLMError` | Protocol: `sendMessage()` → `AsyncThrowingStream<String>` (streaming), `sendMessageComplete()` → `String` (non-streaming). Roles: system/user/assistant. |
+| `Services/LLM/LLMServiceFactory.swift` | `LLMServiceFactory` | Factory: `create(for: APIType)` → returns provider-specific LLMService implementation. |
+| `Services/LLM/OpenRouterService.swift` | `OpenRouterService : LLMService` | OpenAI-compatible with X-Title/HTTP-Referer headers. Streams SSE, parses delta.content. |
+| `Services/LLM/OpenAIService.swift` | `OpenAIService : LLMService` | Chat Completions API. Streaming: delta.content. Non-streaming: message.content. |
+| `Services/LLM/ClaudeService.swift` | `ClaudeService : LLMService` | Anthropic Messages API. Separates system messages. Ensures user/assistant alternation. Streams content_block_delta events. |
+| `Services/LLM/GeminiService.swift` | `GeminiService : LLMService` | streamGenerateContent endpoint. Maps roles: assistant→model. Parses candidates[0].content.parts[0].text. |
+| `Services/LLM/OllamaService.swift` | `OllamaService : LLMService` | Wraps OpenAIService with localhost:11434/v1. No API key needed. |
+| `Services/LLM/SSEParser.swift` | `SSEParser`, `SSEEvent` | Parses Server-Sent Events lines. Handles "data:", "event:" prefixes, [DONE] terminator. |
+
+### Services — PNG
+
+| File | Contents | Summary |
+|------|----------|---------|
+| `Services/PNG/PNGChunkReader.swift` | `PNGChunkReader`, `PNGError` | Reads PNG chunks: validates signature, iterates [length, type, data, CRC]. Extracts tEXt chunks by keyword (key\0text). |
+| `Services/PNG/PNGChunkWriter.swift` | `PNGChunkWriter` | Writes/removes PNG tEXt chunks. CRC32 via zlib. Inserts before IEND. |
+| `Services/PNG/CharacterCardParser.swift` | `CharacterCardParser` | High-level: `parse()` tries 'chara' then 'ccv3' keywords, decodes base64 JSON to TavernCardV2. `embed()` encodes card to base64, writes to PNG. |
+
+### Services — Storage
+
+| File | Contents | Summary |
+|------|----------|---------|
+| `Services/Storage/DataDirectoryManager.swift` | `DataDirectoryManager` | Root: ~/Library/Application Support/SwiftTavern/. Creates subdirs: characters, chats, groups, "group chats", worlds, user, "User Avatars", backgrounds, themes, backups, thumbnails. |
+| `Services/Storage/CharacterStorageService.swift` | `CharacterStorageService` | CRUD for character PNG files. `importCharacter()` handles PNG (embedded card) or JSON (bare CharacterData, TavernCardV2, or SillyTavern wrapper). Creates minimal 1x1 PNG if no avatar. |
+| `Services/Storage/ChatStorageService.swift` | `ChatStorageService` | Thread-safe JSONL I/O via DispatchQueue. First line = metadata, subsequent = messages. Methods: createChat, loadChat, appendMessage, rewriteChat, listChats (sorted newest-first), searchChats, exportChat. |
+| `Services/Storage/SettingsStorageService.swift` | `SettingsStorageService` | JSON persistence of AppSettings. Pretty-printed, sorted keys. Returns .default on missing/corrupt file. |
+| `Services/Storage/SecretsStorageService.swift` | `SecretsStorageService` | API key caching from macOS Keychain. Single batch load on init (one prompt). In-memory cache for reads. Methods: save/get/delete/hasAPIKey. |
+| `Services/Storage/WorldInfoStorageService.swift` | `WorldInfoStorageService` | JSON world info books in worlds/ directory. |
+| `Services/Storage/PersonaStorageService.swift` | `PersonaStorageService` | personas.json + avatar files in "User Avatars/". Defaults to [Persona(name: "User")]. |
+| `Services/Storage/GroupStorageService.swift` | `GroupStorageService` | JSON group definitions in groups/ directory. |
+| `Services/Storage/GroupChatStorageService.swift` | `GroupChatStorageService` | JSONL group chats in "group chats/" directory. Similar to ChatStorageService. |
+
+### Services — Prompt
+
+| File | Contents | Summary |
+|------|----------|---------|
+| `Services/PromptBuilder.swift` | `PromptBuilder` | Assembles LLM context: system prompt → description → personality → scenario → persona → character book (constant + keyword-triggered) → world info (constant + triggered) → few-shot examples → chat history → post-history instructions. Template vars: {{char}}, {{user}}. scanDepth controls how far back to search for keywords. |
+
+### Utilities
+
+| File | Contents | Summary |
+|------|----------|---------|
+| `Utilities/Extensions/String+Extensions.swift` | String extensions | `sanitizedFilename()`, `replacingTemplateVars(char:, user:)`, `truncated(to:)` |
+| `Utilities/Extensions/Data+PNG.swift` | Data extensions | `readUInt32()` (big-endian), `uint32BigEndian()`, `pngSignature`, `isPNG` |
+| `Utilities/Extensions/Date+Formatting.swift` | Date/String extensions | `sillyTavernDateString`, `chatFileDateString` (filename-safe), `relativeDisplayString` ("2d ago"), String `sillyTavernDate` parser |
+| `Utilities/FileManagerExtensions.swift` | FileManager extension | `appSupportDirectory` → ~/Library/Application Support/SwiftTavern/ (fallback ~/.swifttavern/) |
+| `Utilities/KeychainHelper.swift` | `KeychainHelper`, `KeychainError` | macOS Keychain access. Service: "com.swifttavern.macos". Methods: save/load/delete/loadAll. Batch loadAll() avoids repeated permission prompts. |
+| `Utilities/ImageCache.swift` | `ImageCache` | Thread-safe NSCache wrapper. 200 image limit, 100MB budget. Concurrent DispatchQueue. |
+
+### ViewModels
+
+| File | Contents | Summary |
+|------|----------|---------|
+| `ViewModels/ChatViewModel.swift` | `ChatViewModel : @Observable` | Chat logic: sendMessage → generateResponse (builds prompt, streams with 120s timeout). Swipes (alternative responses). Greeting swipes (alternateGreetings). Search across chats. Edit/delete/regenerate messages. New/load/delete chats. Export/import. |
+| `ViewModels/SettingsViewModel.swift` | `SettingsViewModel : @Observable`, `SettingsSection` | Settings management. API switching, model fetching (live OpenRouter list), connection testing. SillyTavern import (characters, chats, worlds, presets, personas, avatars from multiple directory layouts). Data export. Theme application. Toast messages. |
+| `ViewModels/CharacterListViewModel.swift` | `CharacterListViewModel : @Observable` | Character sidebar: filtered list (by name/tags), import (PNG/JSON), export, create, edit, delete. `selectCharacter()` loads or creates a chat. |
+| `ViewModels/CharacterEditorViewModel.swift` | `CharacterEditorViewModel : @Observable` | Character creation/editing form. Avatar picker. Validates name, builds TavernCardV2, embeds in PNG via CharacterCardParser. |
+| `ViewModels/GroupChatViewModel.swift` | `GroupChatViewModel : @Observable` | Group chat: create/select groups, send messages, generate responses with speaker selection (natural/roundRobin/random). |
+| `ViewModels/PersonaViewModel.swift` | `PersonaViewModel : @Observable` | Persona CRUD: create, delete, select active, avatar management, import from SillyTavern. |
+| `ViewModels/WorldInfoViewModel.swift` | `WorldInfoViewModel : @Observable` | World lore CRUD: create/delete books, add/remove entries, save, import. |
+
+### Views
+
+| File | Contents | Summary |
+|------|----------|---------|
+| `Views/MainView.swift` | `MainView` | Root layout: HStack with sidebar + detail. Inline sidebar toggle (hiddenTitleBar). Routes SidebarItem to detail views. Onboarding sheet on first launch. |
+| `Views/OnboardingView.swift` | `OnboardingView` | First-launch modal (600x650). Features overview, "Bring Your Own API Key" notice (recommends OpenRouter), Keychain security note. |
+| `Views/Sidebar/SidebarView.swift` | `SidebarView`, `ConversationRowView` | Main sidebar: search bar, character conversation list with avatars/dates, optional Groups section, bottom nav (Characters, World Lore, Personas, Settings). Context menus for edit/export/delete. |
+| `Views/Sidebar/CharacterRowView.swift` | `CharacterRowView` | Individual character row display. |
+| `Views/Character/CharacterListView.swift` | `CharacterListView` | Grid/list of all characters with search. |
+| `Views/Character/CharacterDetailView.swift` | `CharacterDetailView` | Character info display (avatar, description, personality, scenario). |
+| `Views/Character/CharacterEditorView.swift` | `CharacterEditorView` | Create/edit form: name, description, personality, scenario, first message, alternate greetings, system prompt, tags, avatar. |
+| `Views/Character/CharacterImportView.swift` | `CharacterImportView` | File picker for PNG/JSON imports. |
+| `Views/Chat/ChatView.swift` | `ChatView` | Main chat area: scrollable message list, input bar, chat history picker, search overlay, chat style editor sheet. |
+| `Views/Chat/MessageBubbleView.swift` | `MessageBubbleView` | Single message: avatar, name, timestamp, styled text (MarkdownTextView), swipe arrows, context menu (copy/edit/regenerate/delete). User messages: accent background. Character: control background. |
+| `Views/Chat/ChatInputView.swift` | `ChatInputView` | Text input with send button. Enter/Shift+Enter or Cmd+Enter based on settings. |
+| `Views/Chat/ChatStyleEditorView.swift` | `ChatStyleEditorView` | Color pickers for quoted/action/narrative text, font size slider, live preview, reset to defaults. |
+| `Views/Chat/ChatHistoryPickerView.swift` | `ChatHistoryPickerView` | List of previous chats for a character, sorted by date. |
+| `Views/Chat/StreamingIndicatorView.swift` | `StreamingIndicatorView` | Animated dots while generating response. |
+| `Views/Settings/SettingsView.swift` | `SettingsView`, `DataImportExportView` | Settings sidebar (180px) + scrollable content. Sections: API, General, Chat, Generation, Experimental, Data. Toast overlay. |
+| `Views/Settings/APISettingsView.swift` | API settings | Provider picker, API key field (show/hide), model list with search/groups, base URL, connection test. |
+| `Views/Settings/GenerationSettingsView.swift` | `GenerationSettingsView` | Sliders/fields for temperature, topP, topK, maxTokens, penalties, stop sequences. |
+| `Views/Settings/PersonaSettingsView.swift` | `PersonaSettingsView` | Persona list with avatars, create new form, set active, delete. |
+| `Views/Settings/PersonaPageView.swift` | `PersonaPageView` | Full-page persona editor. |
+| `Views/Group/GroupChatView.swift` | `GroupChatView` | Group chat interface with multi-character messages. |
+| `Views/Group/GroupEditorView.swift` | `GroupEditorView` | Create/edit groups: name, select members, activation strategy. |
+| `Views/WorldInfo/WorldInfoListView.swift` | `WorldInfoListView` | List of world info books with create/import/delete. |
+| `Views/WorldInfo/WorldInfoEditorView.swift` | `WorldInfoEditorView` | Edit entries: keys, content, position, constant flag, secondary keys, case sensitivity. |
+| `Views/Components/AvatarImageView.swift` | `AvatarImageView` | Cached avatar display with fallback initials. |
+| `Views/Components/MarkdownTextView.swift` | `MarkdownTextView` | Renders chat text with ChatStyle coloring (quoted/action/narrative). Adapts colors for light/dark mode. Falls back to standard Markdown. |
+| `Views/Components/SearchBarView.swift` | `SearchBarView` | Reusable search field with clear button. |
+
+### Tests
+
+| File | Summary |
+|------|---------|
+| `Tests/SwiftTavernTests/Models/CharacterTests.swift` | TavernCardV2 JSON decoding |
+| `Tests/SwiftTavernTests/Models/ChatMessageTests.swift` | ChatMessage encoding/decoding |
+| `Tests/SwiftTavernTests/Services/CharacterCardParserTests.swift` | PNG chunk read/write, card embedding |
+| `Tests/SwiftTavernTests/Services/PNGChunkTests.swift` | PNG chunk I/O edge cases |
+| `Tests/SwiftTavernTests/Services/ChatStorageServiceTests.swift` | JSONL chat CRUD, thread safety |
+| `Tests/SwiftTavernTests/Services/PromptBuilderTests.swift` | Prompt assembly pipeline |
+| `Tests/SwiftTavernTests/ViewModels/ChatViewModelTests.swift` | Message sending, generation, swipes |
+| `Tests/SwiftTavernTests/FeatureTests.swift` | Integration: character import, chat flow, settings sections |
+| `Tests/SwiftTavernTests/ImprovementTests.swift` | Performance and compatibility |
+| `Tests/SwiftTavernTests/UIChangesTests.swift` | UI behavior validation |
+| `Tests/SwiftTavernTests/OpenRouterAPITest.swift` | OpenRouter connectivity (requires API key, skipped by default) |
+
+## Key Data Flows
+
+### Sending a Message
+`ChatInputView` → `ChatViewModel.sendMessage()` → append `ChatMessage` to `AppState.currentChat` → `ChatStorageService.appendMessage()` (disk) → `generateResponse()` → `PromptBuilder.buildMessages()` → `LLMService.sendMessage()` (stream) → chunks accumulated → finalize to chat → `ChatStorageService.rewriteChat()` (persist)
+
+### Importing a Character
+File picker → `CharacterListViewModel.importCharacter(from: url)` → `CharacterStorageService.importCharacter()` → PNG: `CharacterCardParser.parse()` (reads tEXt chunk, base64 decodes JSON) / JSON: direct decode → saves to characters/ → reloads `appState.characters`
+
+### LLM Provider Switch
+Settings UI → `SettingsViewModel.switchAPI()` → loads `APIConfigurationData` for provider → retrieves API key from `SecretsStorageService` cache → updates model list → `appState.saveSettings()`
+
+### Prompt Assembly
+`PromptBuilder.buildMessages(chat, character, settings, persona, worldInfoBooks)` → system prompt → character description/personality/scenario → active persona description → character book entries (constant + keyword-triggered via scanDepth) → world info entries (constant + triggered) → few-shot examples (parsed from mesExample) → chat history messages → post-history instructions → template var replacement ({{char}}/{{user}})
+
+## Persistence Formats
+
+| Data | Format | Location |
+|------|--------|----------|
+| Characters | PNG with base64 JSON in tEXt chunk (key: "chara") | ~/Library/Application Support/SwiftTavern/characters/ |
+| Chats | JSONL (line 1 = metadata, lines 2+ = messages) | ~/Library/Application Support/SwiftTavern/chats/{CharName}/ |
+| Settings | JSON (pretty-printed, sorted keys) | ~/Library/Application Support/SwiftTavern/user/settings.json |
+| API Keys | macOS Keychain (service: "com.swifttavern.macos") | System Keychain |
+| World Info | JSON files | ~/Library/Application Support/SwiftTavern/worlds/ |
+| Personas | personas.json + avatar PNGs | ~/Library/Application Support/SwiftTavern/user/ + User Avatars/ |
+| Groups | JSON files | ~/Library/Application Support/SwiftTavern/groups/ |
+| Group Chats | JSONL files | ~/Library/Application Support/SwiftTavern/group chats/ |
