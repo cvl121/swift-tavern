@@ -127,7 +127,6 @@ final class SettingsViewModel {
         if advancedMode {
             sections.append(.generation)
         }
-        sections.append(.personas)
         sections.append(.experimental)
         sections.append(.data)
         return sections

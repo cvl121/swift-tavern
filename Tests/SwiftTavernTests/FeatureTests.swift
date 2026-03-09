@@ -138,7 +138,7 @@ final class AdvancedModeTests: XCTestCase {
         XCTAssertTrue(sections.contains(.api), "API section should always be visible")
         XCTAssertTrue(sections.contains(.general), "General section should always be visible")
         XCTAssertTrue(sections.contains(.chat), "Chat section should always be visible")
-        XCTAssertTrue(sections.contains(.personas), "Personas section should always be visible")
+        XCTAssertFalse(sections.contains(.personas), "Personas section should not be in settings (available in sidebar)")
         XCTAssertTrue(sections.contains(.experimental), "Experimental section should always be visible")
         XCTAssertTrue(sections.contains(.data), "Data section should always be visible")
     }

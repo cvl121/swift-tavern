@@ -4,10 +4,12 @@ import SwiftUI
 struct MarkdownTextView: View {
     let text: String
     var chatStyle: ChatStyle?
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         if let style = chatStyle {
-            Text(styledText(style: style))
+            let effectiveStyle = ChatStyle.adaptedForAppearance(style, isDark: colorScheme == .dark)
+            Text(styledText(style: effectiveStyle))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         } else {

@@ -18,11 +18,40 @@ struct ChatStyle: Codable, Equatable {
         fontSize: 13
     )
 
+    /// Light-mode-safe defaults with darker colors for readability
+    static let lightDefault = ChatStyle(
+        quotedTextColor: CodableColor(r: 0.6, g: 0.5, b: 0.0),
+        italicActionColor: CodableColor(r: 0.2, g: 0.45, b: 0.2),
+        narrativeColor: CodableColor(r: 0.1, g: 0.1, b: 0.1),
+        fontSize: 13
+    )
+
     enum CodingKeys: String, CodingKey {
         case quotedTextColor = "quoted_text_color"
         case italicActionColor = "italic_action_color"
         case narrativeColor = "narrative_color"
         case fontSize = "font_size"
+    }
+
+    /// Returns theme-appropriate colors based on the current appearance
+    func effectiveColor(for codableColor: CodableColor) -> Color {
+        codableColor.color
+    }
+
+    /// Returns a style adapted for the current system appearance
+    static func adaptedForAppearance(_ style: ChatStyle, isDark: Bool) -> ChatStyle {
+        if isDark {
+            return style
+        }
+        // For light mode, check if the user's colors are too light to read
+        let narrativeBrightness = (style.narrativeColor.r + style.narrativeColor.g + style.narrativeColor.b) / 3.0
+        if narrativeBrightness > 0.7 {
+            // Colors are optimized for dark mode, return light defaults but keep font size
+            var light = ChatStyle.lightDefault
+            light.fontSize = style.fontSize
+            return light
+        }
+        return style
     }
 }
 

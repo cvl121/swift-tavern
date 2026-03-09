@@ -78,17 +78,17 @@ struct OnboardingView: View {
                 Divider()
                     .padding(.horizontal, 40)
 
-                // Security note
+                // API key note
                 VStack(spacing: 8) {
                     HStack(spacing: 8) {
-                        Image(systemName: "lock.shield.fill")
+                        Image(systemName: "key.fill")
                             .font(.system(size: 20))
-                            .foregroundColor(.green)
-                        Text("Your API Keys Are Secure")
+                            .foregroundColor(.orange)
+                        Text("Bring Your Own API Key")
                             .font(.headline)
                     }
 
-                    Text("API keys are stored in the macOS Keychain, the same system Apple uses to protect your passwords. Keys are never saved in plain text files. You may see a Keychain access prompt on first use \u{2014} this is macOS verifying your permission to access the stored keys.")
+                    Text("SwiftTavern requires your own API key to chat with AI characters. We recommend **OpenRouter** as it gives you access to models from OpenAI, Anthropic, Google, Meta, and more with a single key.\n\nYour keys are stored securely in the macOS Keychain and never saved in plain text. You may see a one-time Keychain access prompt \u{2014} this is macOS verifying your permission.")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -100,7 +100,7 @@ struct OnboardingView: View {
                     Text("Getting Started")
                         .font(.headline)
 
-                    Text("Head to **Settings > API Provider** to add your API key and select a model. Then pick a character from the sidebar to start chatting.")
+                    Text("Head to **Settings > API Provider**, select your provider (OpenRouter recommended), enter your API key, and choose a model. Then pick a character from the sidebar to start chatting.")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)

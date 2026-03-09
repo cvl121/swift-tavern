@@ -15,7 +15,8 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             // Search bar
             SearchBarView(text: $conversationSearchText, placeholder: "Search conversations...")
-                .padding(8)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 6)
 
             // Scrollable conversation list
             List(selection: $appState.selectedSidebarItem) {
@@ -101,7 +102,7 @@ struct SidebarView: View {
 
                 sidebarNavButton("Settings", icon: "gear", item: .settings)
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 4)
             .padding(.vertical, 4)
         }
         // Export character file saver
@@ -155,7 +156,7 @@ struct SidebarView: View {
                 Spacer()
             }
             .padding(.vertical, 6)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 4)
             .frame(maxWidth: .infinity)
             .background(appState.selectedSidebarItem == item ? Color.accentColor.opacity(0.15) : Color.clear)
             .cornerRadius(6)
@@ -226,7 +227,7 @@ private struct ConversationRowView: View {
             Spacer()
         }
         .padding(.vertical, 4)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 4)
         .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
         .cornerRadius(6)
         .contentShape(Rectangle())

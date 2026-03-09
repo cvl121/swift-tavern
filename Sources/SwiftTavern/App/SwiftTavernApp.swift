@@ -8,7 +8,7 @@ struct SwiftTavernApp: App {
         WindowGroup {
             MainView(appState: appState)
         }
-        .windowStyle(.titleBar)
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1200, height: 750)
         .commands {
             CommandGroup(replacing: .newItem) {

@@ -69,7 +69,7 @@ struct SettingsView: View {
         case .generation:
             generationSection
         case .personas:
-            personasSection
+            EmptyView()
         case .experimental:
             experimentalSection
         case .data:
@@ -487,7 +487,7 @@ struct SettingsView: View {
 
             Toggle("Enable Experimental Features", isOn: $viewModel.experimentalFeatures)
                 .onChange(of: viewModel.experimentalFeatures) { _, _ in
-                    viewModel.saveConfiguration()
+                    Task { @MainActor in viewModel.saveConfiguration() }
                 }
 
             if viewModel.experimentalFeatures {
@@ -496,7 +496,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Toggle("Group Chats", isOn: $viewModel.groupChatsEnabled)
                             .onChange(of: viewModel.groupChatsEnabled) { _, _ in
-                                viewModel.saveConfiguration()
+                                Task { @MainActor in viewModel.saveConfiguration() }
                             }
                         Text("Enable group chat functionality with multiple characters. Groups will appear in the sidebar conversations list.")
                             .font(.system(size: 11))
@@ -510,7 +510,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Toggle("Image Generation", isOn: $viewModel.imageGenerationEnabled)
                             .onChange(of: viewModel.imageGenerationEnabled) { _, _ in
-                                viewModel.saveConfiguration()
+                                Task { @MainActor in viewModel.saveConfiguration() }
                             }
                         Text("Generate images within conversations using AI image models. This feature is under development and not yet functional.")
                             .font(.system(size: 11))

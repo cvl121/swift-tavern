@@ -41,22 +41,30 @@ struct MainView: View {
             }
 
             // Detail content
-            detailView
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        sidebarVisible.toggle()
+            VStack(spacing: 0) {
+                // Slim top bar with sidebar toggle
+                HStack(spacing: 8) {
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            sidebarVisible.toggle()
+                        }
+                    }) {
+                        Image(systemName: "sidebar.left")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
                     }
-                }) {
-                    Image(systemName: "sidebar.left")
+                    .buttonStyle(.plain)
+                    .help("Toggle Sidebar")
+                    .padding(.leading, 8)
+
+                    Spacer()
                 }
-                .help("Toggle Sidebar")
+                .frame(height: 28)
+
+                detailView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .navigationTitle("")
         .frame(minWidth: 1000, minHeight: 600)
         .background(Color(.windowBackgroundColor))
         .onAppear {
