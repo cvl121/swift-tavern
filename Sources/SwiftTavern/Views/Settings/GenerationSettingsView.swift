@@ -24,7 +24,7 @@ struct GenerationSettingsView: View {
                 Slider(value: .init(
                     get: { Double(params.maxTokens) },
                     set: { params.maxTokens = Int($0) }
-                ), in: 1...1_000_000, step: 1)
+                ), in: 1...16384, step: 64)
             }
 
             // Temperature

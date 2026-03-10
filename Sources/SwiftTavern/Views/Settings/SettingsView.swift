@@ -6,6 +6,9 @@ struct SettingsView: View {
     @Bindable var viewModel: SettingsViewModel
     let personaVM: PersonaViewModel
 
+    @State private var settingsSidebarWidth: CGFloat = 180
+    @State private var settingsDragStartWidth: CGFloat = 180
+
     var body: some View {
         HStack(spacing: 0) {
             // Settings sidebar
@@ -15,9 +18,35 @@ struct SettingsView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
-            .frame(width: 180)
+            .frame(width: settingsSidebarWidth)
 
-            Divider()
+            // Resizable divider
+            Rectangle()
+                .fill(Color(.separatorColor))
+                .frame(width: 1)
+                .overlay(
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(width: 8)
+                        .contentShape(Rectangle())
+                        .onHover { hovering in
+                            if hovering {
+                                NSCursor.resizeLeftRight.push()
+                            } else {
+                                NSCursor.pop()
+                            }
+                        }
+                        .gesture(
+                            DragGesture(coordinateSpace: .global)
+                                .onChanged { value in
+                                    let newWidth = settingsDragStartWidth + value.translation.width
+                                    settingsSidebarWidth = min(max(newWidth, 150), 250)
+                                }
+                                .onEnded { _ in
+                                    settingsDragStartWidth = settingsSidebarWidth
+                                }
+                        )
+                )
 
             // Settings content
             ScrollView {
@@ -66,14 +95,14 @@ struct SettingsView: View {
             generalSection
         case .chat:
             chatSection
-        case .generation:
-            generationSection
-        case .personas:
-            EmptyView()
+        case .presets:
+            presetsSection
         case .experimental:
             experimentalSection
         case .data:
             dataSection
+        case .reset:
+            resetSection
         }
     }
 
@@ -350,6 +379,29 @@ struct SettingsView: View {
                     }
             }
 
+            // Global World Lore
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Global World Lore")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                Picker("World Lore", selection: $viewModel.globalWorldLore) {
+                    Text("None").tag(String?.none)
+                    ForEach(viewModel.worldInfoBookNames, id: \.self) { name in
+                        Text(name).tag(Optional(name))
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+                .onChange(of: viewModel.globalWorldLore) { _, _ in
+                    viewModel.saveConfiguration()
+                }
+
+                Text("Default world lore applied to all characters unless overridden per-character in the character editor.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
             Divider()
 
             Toggle("Advanced Mode", isOn: $viewModel.advancedMode)
@@ -357,7 +409,7 @@ struct SettingsView: View {
                     viewModel.saveConfiguration()
                 }
 
-            Text("Show the Generation parameters tab for fine-tuning model behavior.")
+            Text("Show the Chat Presets tab for fine-tuning model behavior.")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
@@ -376,7 +428,7 @@ struct SettingsView: View {
             Text("Chat Settings")
                 .font(.title2.bold())
 
-            Text("Configure chat input behavior and import presets.")
+            Text("Configure chat input behavior.")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
 
@@ -410,19 +462,80 @@ struct SettingsView: View {
 
             Divider()
 
-            // Import Preset
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Chat Presets")
-                    .font(.headline)
+            // Show chat button labels
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Show chat button labels", isOn: $viewModel.showChatButtonLabels)
+                    .onChange(of: viewModel.showChatButtonLabels) { _, _ in
+                        viewModel.saveConfiguration()
+                    }
 
-                Text("Import a SillyTavern preset file to load generation parameters (temperature, top_p, etc.).")
-                    .font(.system(size: 12))
+                Text("Display text labels next to the chat action buttons in the header.")
+                    .font(.system(size: 11))
                     .foregroundColor(.secondary)
+            }
 
-                Button(action: { viewModel.showingPresetImporter = true }) {
-                    Label("Import Preset", systemImage: "square.and.arrow.down")
+            // Show individual conversations
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Show individual conversations", isOn: $viewModel.showIndividualConversations)
+                    .onChange(of: viewModel.showIndividualConversations) { _, _ in
+                        viewModel.saveConfiguration()
+                    }
+
+                Text("Show each conversation separately in the sidebar instead of grouping by character.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            Divider()
+
+            // Chat display limits
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Chat Display Limits")
+                    .font(.system(size: 12, weight: .medium))
+
+                HStack {
+                    Text("Max messages shown")
+                        .font(.system(size: 12))
+                    Spacer()
+                    TextField("0 = all", value: $viewModel.chatDisplayLimit, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                        .multilineTextAlignment(.trailing)
+                        .onChange(of: viewModel.chatDisplayLimit) { _, _ in
+                            viewModel.saveConfiguration()
+                        }
                 }
-                .buttonStyle(.bordered)
+
+                HStack {
+                    Text("Max message length (chars)")
+                        .font(.system(size: 12))
+                    Spacer()
+                    TextField("0 = all", value: $viewModel.chatMessageLengthLimit, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                        .multilineTextAlignment(.trailing)
+                        .onChange(of: viewModel.chatMessageLengthLimit) { _, _ in
+                            viewModel.saveConfiguration()
+                        }
+                }
+
+                Text("Limit how many messages and how long each message is displayed in the chat. Useful for long conversations. Set to 0 for unlimited.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            Divider()
+
+            // Developer mode
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Developer Mode", isOn: $viewModel.developerMode)
+                    .onChange(of: viewModel.developerMode) { _, _ in
+                        viewModel.saveConfiguration()
+                    }
+
+                Text("Show a developer log panel with API request and response metadata for debugging.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
             }
 
             if let status = viewModel.importStatusMessage {
@@ -431,46 +544,104 @@ struct SettingsView: View {
                     .foregroundColor(viewModel.importWasError ? .red : .green)
             }
         }
-        .fileImporter(
-            isPresented: $viewModel.showingPresetImporter,
-            allowedContentTypes: [.json],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                viewModel.importPreset(from: url)
-            }
-        }
     }
 
-    // MARK: - Generation
+    // MARK: - Chat Presets
 
-    private var generationSection: some View {
+    private var presetsSection: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Generation Parameters")
+            Text("Chat Presets")
                 .font(.title2.bold())
 
-            Text("Fine-tune how the AI model generates responses. Changes are saved automatically.")
+            Text("Manage generation parameter presets. Changes are saved when you click Update.")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
 
+            // Preset selector
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Active Preset")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                HStack {
+                    Picker("Preset", selection: $viewModel.activePresetName) {
+                        ForEach(viewModel.presetList, id: \.name) { preset in
+                            Text(preset.name).tag(preset.name)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .onChange(of: viewModel.activePresetName) { _, newValue in
+                        viewModel.selectPreset(newValue)
+                    }
+                    Spacer()
+                }
+
+                HStack(spacing: 8) {
+                    Button("New") {
+                        viewModel.showingNewPresetDialog = true
+                    }
+                    .controlSize(.small)
+
+                    Button("Update") {
+                        viewModel.updateCurrentPreset()
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+
+                    Button(role: .destructive) {
+                        viewModel.deleteCurrentPreset()
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .controlSize(.small)
+                    .disabled(viewModel.activePresetName == "Default")
+                    .help(viewModel.activePresetName == "Default" ? "Cannot delete Default preset" : "Delete preset")
+                }
+            }
+
+            Divider()
+
+            // Import/Export
+            HStack(spacing: 8) {
+                Button(action: { viewModel.showingPresetImporterFile = true }) {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button(action: { viewModel.exportCurrentPreset() }) {
+                    Label("Export Selected", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button(action: { viewModel.exportAllPresets() }) {
+                    Label("Export All", systemImage: "square.and.arrow.up.on.square")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+
+            Divider()
+
+            // Generation parameters
             GenerationSettingsView(params: $viewModel.generationParams)
                 .frame(maxWidth: 500)
                 .onChange(of: viewModel.generationParams) { _, _ in
-                    viewModel.saveConfiguration()
+                    Task { @MainActor in viewModel.saveConfiguration() }
                 }
         }
-    }
-
-    // MARK: - Personas
-
-    private var personasSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Personas")
-                .font(.title2.bold())
-
-            PersonaSettingsView(viewModel: personaVM)
+        .alert("New Preset", isPresented: $viewModel.showingNewPresetDialog) {
+            TextField("Preset name", text: $viewModel.newPresetName)
+            Button("Cancel", role: .cancel) {}
+            Button("Create") { viewModel.createPreset() }
+        } message: {
+            Text("Create a new preset from the current generation parameters.")
         }
     }
+
+
 
     // MARK: - Experimental
 
@@ -546,28 +717,140 @@ struct SettingsView: View {
     // MARK: - Data
 
     private var dataSection: some View {
-        DataImportExportView(viewModel: viewModel)
+        DataImportExportView(viewModel: viewModel, personaVM: personaVM)
+    }
+
+    // MARK: - Reset
+
+    private var resetSection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Reset")
+                .font(.title2.bold())
+
+            Text("Reset application data. These actions cannot be undone.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 12) {
+                resetRow(
+                    title: "Clear All Characters",
+                    description: "Remove all characters and their chat histories.",
+                    action: { viewModel.showingResetCharactersConfirmation = true }
+                )
+
+                resetRow(
+                    title: "Clear All Personas",
+                    description: "Reset personas to the default \"User\" persona.",
+                    action: { viewModel.showingResetPersonasConfirmation = true }
+                )
+
+                resetRow(
+                    title: "Clear All World Lore",
+                    description: "Remove all world lore books and entries.",
+                    action: { viewModel.showingResetWorldLoreConfirmation = true }
+                )
+
+                resetRow(
+                    title: "Clear All Presets",
+                    description: "Remove all custom presets and restore the Default preset.",
+                    action: { viewModel.showingResetPresetsConfirmation = true }
+                )
+
+                Divider()
+
+                resetRow(
+                    title: "Reset Everything",
+                    description: "Reset the entire application to its default state. All data will be deleted.",
+                    isDestructive: true,
+                    action: { viewModel.showingResetAllConfirmation = true }
+                )
+            }
+        }
+        .alert("Clear All Characters?", isPresented: $viewModel.showingResetCharactersConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear", role: .destructive) { viewModel.resetCharacters() }
+        } message: {
+            Text("This will permanently delete all characters and their chat histories.")
+        }
+        .alert("Clear All Personas?", isPresented: $viewModel.showingResetPersonasConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear", role: .destructive) { viewModel.resetPersonas() }
+        } message: {
+            Text("This will remove all personas and reset to the default \"User\" persona.")
+        }
+        .alert("Clear All World Lore?", isPresented: $viewModel.showingResetWorldLoreConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear", role: .destructive) { viewModel.resetWorldLore() }
+        } message: {
+            Text("This will permanently delete all world lore books.")
+        }
+        .alert("Clear All Presets?", isPresented: $viewModel.showingResetPresetsConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear", role: .destructive) { viewModel.resetPresets() }
+        } message: {
+            Text("This will remove all custom presets and restore the Default preset.")
+        }
+        .sheet(isPresented: $viewModel.showingResetAllConfirmation) {
+            ResetConfirmationView(
+                onConfirm: {
+                    viewModel.showingResetAllConfirmation = false
+                    viewModel.resetAll()
+                },
+                onCancel: {
+                    viewModel.showingResetAllConfirmation = false
+                }
+            )
+        }
+    }
+
+    private func resetRow(title: String, description: String, isDestructive: Bool = false, action: @escaping () -> Void) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(isDestructive ? .red : .primary)
+                Text(description)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            Button(isDestructive ? "Reset All" : "Clear", role: .destructive, action: action)
+                .controlSize(.small)
+        }
+        .padding(10)
+        .background(Color(.controlBackgroundColor))
+        .cornerRadius(8)
     }
 }
 
-/// View for importing/exporting data from SillyTavern
+/// View for importing/exporting data
 struct DataImportExportView: View {
     @Bindable var viewModel: SettingsViewModel
+    let personaVM: PersonaViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Data Import / Export")
                 .font(.title2.bold())
 
-            Text("Import your characters, chats, world lore, and presets from an existing SillyTavern installation.")
+            Text("To import or export individual items, use the Characters, World Lore, Personas, and Chat Presets views. Use this section for bulk operations.")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
 
             Divider()
 
-            // SillyTavern path input
+            // Bulk import from directory
+            Text("Bulk Import from Directory")
+                .font(.headline)
+
+            Text("Point to a SillyTavern installation or any directory containing characters, chats, worlds, and presets to import everything at once.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+
             VStack(alignment: .leading, spacing: 8) {
-                Text("SillyTavern Installation Path")
+                Text("Root Directory")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.secondary)
 
@@ -581,7 +864,7 @@ struct DataImportExportView: View {
                         panel.canChooseDirectories = true
                         panel.canChooseFiles = false
                         panel.allowsMultipleSelection = false
-                        panel.message = "Select your SillyTavern installation folder"
+                        panel.message = "Select the root directory to import from"
                         panel.prompt = "Select"
                         if panel.runModal() == .OK, let url = panel.url {
                             viewModel.sillyTavernPath = url.path
@@ -591,32 +874,103 @@ struct DataImportExportView: View {
                 }
 
                 if !viewModel.sillyTavernPath.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Button("Import All SillyTavern Data") {
-                        viewModel.importFromPath()
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-            }
+                    HStack(spacing: 8) {
+                        Button("Import All Data") {
+                            viewModel.importFromPath()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(viewModel.isImporting)
 
-            if let importStatus = viewModel.importStatusMessage {
-                HStack(spacing: 6) {
-                    Image(systemName: viewModel.importWasError ? "xmark.circle.fill" : "checkmark.circle.fill")
-                        .foregroundColor(viewModel.importWasError ? .red : .green)
-                    Text(importStatus)
-                        .font(.caption)
-                        .foregroundColor(viewModel.importWasError ? .red : .green)
+                        if viewModel.isImporting {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Importing...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
+                if let importStatus = viewModel.importStatusMessage {
+                    HStack(spacing: 6) {
+                        Image(systemName: viewModel.importWasError ? "xmark.circle.fill" : "checkmark.circle.fill")
+                            .foregroundColor(viewModel.importWasError ? .red : .green)
+                        Text(importStatus)
+                            .font(.caption)
+                            .foregroundColor(viewModel.importWasError ? .red : .green)
+                    }
                 }
             }
 
             Divider()
 
-            Text("Export Data")
+            // Export
+            Text("Export")
                 .font(.headline)
 
-            Button("Export All Data") {
-                viewModel.exportAllData()
+            HStack(spacing: 8) {
+                Button("Export All Data") {
+                    viewModel.exportAllData()
+                }
+                .buttonStyle(.bordered)
+                .disabled(viewModel.isExporting)
+
+                if viewModel.isExporting {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Exporting...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
-            .buttonStyle(.bordered)
         }
+    }
+}
+
+/// Confirmation sheet requiring the user to type "I understand" to reset
+struct ResetConfirmationView: View {
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    @State private var confirmationText = ""
+
+    private var isConfirmed: Bool {
+        confirmationText.trimmingCharacters(in: .whitespaces).lowercased() == "i understand"
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 40))
+                .foregroundColor(.red)
+
+            Text("Reset Everything")
+                .font(.title2.bold())
+
+            Text("This will permanently delete ALL data including characters, chats, personas, world lore, presets, and settings. This action cannot be reversed.")
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 350)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Type \"I understand\" to confirm:")
+                    .font(.system(size: 12, weight: .medium))
+                TextField("", text: $confirmationText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 300)
+            }
+
+            HStack(spacing: 12) {
+                Button("Cancel", role: .cancel, action: onCancel)
+                    .keyboardShortcut(.escape)
+
+                Button("Reset All", role: .destructive, action: onConfirm)
+                    .disabled(!isConfirmed)
+                    .keyboardShortcut(.return)
+            }
+        }
+        .padding(30)
+        .frame(width: 420)
     }
 }

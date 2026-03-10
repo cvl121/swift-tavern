@@ -5,6 +5,9 @@ struct ChatInputView: View {
     @Binding var text: String
     let isGenerating: Bool
     let sendOnEnter: Bool
+    var activeModel: String?
+    var characterName: String?
+    var tokenCount: Int = 0
     let onSend: () -> Void
     let onStop: () -> Void
 
@@ -16,18 +19,53 @@ struct ChatInputView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Drag handle for resizing
-            Rectangle()
-                .fill(Color.clear)
-                .frame(height: 6)
-                .contentShape(Rectangle())
-                .cursor(.resizeUpDown)
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            let newHeight = inputHeight - value.translation.height
-                            inputHeight = min(max(newHeight, minInputHeight), maxInputHeight)
-                        }
-                )
+            ZStack {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(height: 8)
+
+                HStack(spacing: 3) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        Circle()
+                            .frame(width: 4, height: 4)
+                    }
+                }
+                .foregroundColor(.secondary.opacity(0.5))
+            }
+            .contentShape(Rectangle())
+            .cursor(.resizeUpDown)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        let newHeight = inputHeight - value.translation.height
+                        inputHeight = min(max(newHeight, minInputHeight), maxInputHeight)
+                    }
+            )
+
+            // Context info bar
+            if activeModel != nil || characterName != nil {
+                HStack(spacing: 6) {
+                    if let name = characterName {
+                        Text("Chatting with \(name)")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    if tokenCount > 0 {
+                        Text("~\(tokenCount) tokens")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    if let model = activeModel {
+                        Spacer()
+                        Text(model)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 2)
+            }
 
             HStack(alignment: .bottom, spacing: 8) {
                 TextEditor(text: $text)
@@ -38,34 +76,30 @@ struct ChatInputView: View {
                     .background(Color(.controlBackgroundColor))
                     .cornerRadius(8)
 
-                if isGenerating {
-                    Button(action: onStop) {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(.red)
+                Button(action: {
+                    if isGenerating {
+                        onStop()
+                    } else if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        onSend()
                     }
-                    .buttonStyle(.plain)
-                    .help("Stop generating")
-                } else {
-                    Button(action: {
-                        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            onSend()
-                        }
-                    }) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(.accentColor)
-                    }
-                    .buttonStyle(.plain)
-                    .help(sendOnEnter ? "Send message (Enter)" : "Send message (Cmd+Return)")
+                }) {
+                    Image(systemName: isGenerating ? "stop.circle.fill" : "arrow.up.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(isGenerating ? .red : .accentColor)
                 }
+                .buttonStyle(.plain)
+                .help(isGenerating ? "Stop generating" : (sendOnEnter ? "Send message (Enter)" : "Send message (Cmd+Return)"))
+                .animation(.easeInOut(duration: 0.15), value: isGenerating)
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
             .padding(.top, 4)
         }
         .onKeyPress(.return, phases: .down) { keyPress in
-            guard !isGenerating else { return .ignored }
+            if isGenerating {
+                onStop()
+                return .handled
+            }
             if sendOnEnter {
                 if keyPress.modifiers.contains(.shift) {
                     return .ignored

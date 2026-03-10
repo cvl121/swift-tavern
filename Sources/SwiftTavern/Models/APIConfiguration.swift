@@ -23,6 +23,8 @@ struct APIConfiguration {
             return "http://localhost:11434"
         case .openrouter:
             return "https://openrouter.ai/api/v1"
+        case .novelai:
+            return "https://text.novelai.net"
         }
     }
 }

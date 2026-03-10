@@ -18,23 +18,21 @@ struct PersonaPageView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+
+                Button(action: { personaVM.exportAllPersonas() }) {
+                    Label("Export All", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
 
             Divider()
 
             ScrollView {
                 PersonaSettingsView(viewModel: personaVM)
                     .padding(20)
-            }
-        }
-        .fileImporter(
-            isPresented: $personaVM.showingImporter,
-            allowedContentTypes: [.json],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                personaVM.importPersonas(from: url)
             }
         }
     }

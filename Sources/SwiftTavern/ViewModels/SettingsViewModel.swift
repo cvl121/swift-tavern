@@ -7,10 +7,10 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case api = "API Provider"
     case general = "General"
     case chat = "Chat"
-    case generation = "Generation"
-    case personas = "Personas"
+    case presets = "Chat Presets"
     case experimental = "Experimental"
     case data = "Data"
+    case reset = "Reset"
 
     var id: String { rawValue }
 
@@ -19,10 +19,10 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .api: return "network"
         case .general: return "gearshape"
         case .chat: return "bubble.left.and.bubble.right"
-        case .generation: return "slider.horizontal.3"
-        case .personas: return "person.circle"
+        case .presets: return "slider.horizontal.3"
         case .experimental: return "flask"
         case .data: return "square.and.arrow.down.on.square"
+        case .reset: return "arrow.counterclockwise"
         }
     }
 }
@@ -45,6 +45,10 @@ final class SettingsViewModel {
     var connectionTestSuccess: Bool = false
     var isTesting = false
 
+    // Loading indicators for bulk operations
+    var isImporting = false
+    var isExporting = false
+
     // Toggles
     var advancedMode: Bool
     var experimentalFeatures: Bool
@@ -53,6 +57,12 @@ final class SettingsViewModel {
     var theme: AppTheme
     var chatStyle: ChatStyle
     var imageGenerationEnabled: Bool
+    var showChatButtonLabels: Bool
+    var showIndividualConversations: Bool
+    var developerMode: Bool
+    var globalWorldLore: String?
+    var chatDisplayLimit: Int
+    var chatMessageLengthLimit: Int
 
     // Data import/export state
     var showingDataImporter = false
@@ -84,6 +94,12 @@ final class SettingsViewModel {
         self.theme = appState.settings.theme
         self.chatStyle = appState.settings.chatStyle
         self.imageGenerationEnabled = appState.settings.imageGenerationEnabled
+        self.showChatButtonLabels = appState.settings.showChatButtonLabels
+        self.showIndividualConversations = appState.settings.showIndividualConversations
+        self.developerMode = appState.settings.developerMode
+        self.globalWorldLore = appState.settings.globalWorldLore
+        self.chatDisplayLimit = appState.settings.chatDisplayLimit
+        self.chatMessageLengthLimit = appState.settings.chatMessageLengthLimit
 
         let configData = appState.settings.apiConfigurations[appState.settings.activeAPI.rawValue]
             ?? .defaultConfig(for: appState.settings.activeAPI)
@@ -92,7 +108,10 @@ final class SettingsViewModel {
         self.generationParams = configData.generationParams
 
         // Load existing API key (from cache, no keychain prompt)
-        self.apiKey = appState.secretsStorage.getAPIKey(for: appState.settings.activeAPI) ?? ""
+        self.apiKey = appState.settings.apiKeys[appState.settings.activeAPI.rawValue] ?? ""
+
+        // Load presets
+        self.activePresetName = appState.activePresetName
 
         // Fetch live models if OpenRouter is selected
         if selectedAPI == .openrouter {
@@ -106,6 +125,10 @@ final class SettingsViewModel {
             return openRouterModels
         }
         return selectedAPI.defaultModels
+    }
+
+    var worldInfoBookNames: [String] {
+        appState?.worldInfoBooks.map(\.name) ?? []
     }
 
     var filteredModels: [String] {
@@ -122,13 +145,30 @@ final class SettingsViewModel {
     }
 
     /// Sections visible based on current settings
+    // Preset management
+    var activePresetName: String = "Default"
+    var newPresetName = ""
+    var showingNewPresetDialog = false
+    var showingPresetExporter = false
+    var showingPresetImporterFile = false
+    var showingRenamePresetDialog = false
+    var renamePresetName = ""
+
+    // Reset confirmations
+    var showingResetAllConfirmation = false
+    var showingResetCharactersConfirmation = false
+    var showingResetPersonasConfirmation = false
+    var showingResetWorldLoreConfirmation = false
+    var showingResetPresetsConfirmation = false
+
     var visibleSections: [SettingsSection] {
         var sections: [SettingsSection] = [.api, .general, .chat]
         if advancedMode {
-            sections.append(.generation)
+            sections.append(.presets)
         }
         sections.append(.experimental)
         sections.append(.data)
+        sections.append(.reset)
         return sections
     }
 
@@ -142,7 +182,7 @@ final class SettingsViewModel {
         model = configData.model
         baseURL = configData.baseURL ?? ""
         generationParams = configData.generationParams
-        apiKey = appState.secretsStorage.getAPIKey(for: apiType) ?? ""
+        apiKey = appState.settings.apiKeys[apiType.rawValue] ?? ""
         modelSearchText = ""
         connectionTestResult = nil
 
@@ -186,10 +226,11 @@ final class SettingsViewModel {
     func saveAPIKey() {
         guard let appState else { return }
         if apiKey.isEmpty {
-            appState.secretsStorage.deleteAPIKey(for: selectedAPI)
+            appState.settings.apiKeys.removeValue(forKey: selectedAPI.rawValue)
         } else {
-            try? appState.secretsStorage.saveAPIKey(apiKey, for: selectedAPI)
+            appState.settings.apiKeys[selectedAPI.rawValue] = apiKey
         }
+        appState.saveSettings()
         statusMessage = "API key saved"
     }
 
@@ -205,6 +246,12 @@ final class SettingsViewModel {
         appState.settings.theme = theme
         appState.settings.chatStyle = chatStyle
         appState.settings.imageGenerationEnabled = imageGenerationEnabled
+        appState.settings.showChatButtonLabels = showChatButtonLabels
+        appState.settings.showIndividualConversations = showIndividualConversations
+        appState.settings.developerMode = developerMode
+        appState.settings.globalWorldLore = globalWorldLore
+        appState.settings.chatDisplayLimit = chatDisplayLimit
+        appState.settings.chatMessageLengthLimit = chatMessageLengthLimit
 
         let configData = APIConfigurationData(
             baseURL: baseURL.isEmpty ? nil : baseURL,
@@ -292,9 +339,22 @@ final class SettingsViewModel {
         importFromSillyTavernDirectory(url)
     }
 
-    private func importFromSillyTavernDirectory(_ url: URL) {
+    private func importFromSillyTavernDirectory(_ providedURL: URL) {
         guard let appState else { return }
+        isImporting = true
+        defer { isImporting = false }
         let fm = FileManager.default
+
+        // If user pointed to a launcher directory that contains a SillyTavern/ subdirectory, use that
+        let stSubdir = providedURL.appendingPathComponent("SillyTavern")
+        let url: URL
+        if fm.fileExists(atPath: stSubdir.appendingPathComponent("data").path) ||
+           fm.fileExists(atPath: stSubdir.appendingPathComponent("package.json").path) {
+            url = stSubdir
+        } else {
+            url = providedURL
+        }
+
         var importedChars = 0
         var importedChats = 0
         var importedWorlds = 0
@@ -674,6 +734,377 @@ final class SettingsViewModel {
         if let v = dict["stream"] as? Bool { generationParams.streamResponse = v }
     }
 
+    // MARK: - Preset Management
+
+    var presetList: [ChatPreset] {
+        appState?.presets ?? [.default]
+    }
+
+    func loadPresets() {
+        guard let appState else { return }
+        appState.presets = appState.presetStorage.loadAll()
+        activePresetName = appState.activePresetName
+    }
+
+    func selectPreset(_ name: String) {
+        guard let appState else { return }
+        activePresetName = name
+        appState.activePresetName = name
+        if let preset = appState.presets.first(where: { $0.name == name }) {
+            generationParams = preset.generationParams
+            saveConfiguration()
+        }
+    }
+
+    func createPreset() {
+        guard let appState, !newPresetName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let name = newPresetName.trimmingCharacters(in: .whitespaces)
+        let preset = ChatPreset(name: name, generationParams: generationParams)
+        do {
+            try appState.presetStorage.save(preset)
+            appState.presets = appState.presetStorage.loadAll()
+            activePresetName = name
+            appState.activePresetName = name
+            newPresetName = ""
+            saveConfiguration()
+            showToastMessage("Created preset: \(name)", isError: false)
+        } catch {
+            showToastMessage("Failed to create preset: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    func updateCurrentPreset() {
+        guard let appState else { return }
+        let preset = ChatPreset(name: activePresetName, generationParams: generationParams)
+        do {
+            try appState.presetStorage.save(preset)
+            appState.presets = appState.presetStorage.loadAll()
+            showToastMessage("Updated preset: \(activePresetName)", isError: false)
+        } catch {
+            showToastMessage("Failed to update preset: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    func deleteCurrentPreset() {
+        guard let appState, activePresetName != "Default" else {
+            showToastMessage("Cannot delete the Default preset.", isError: true)
+            return
+        }
+        do {
+            try appState.presetStorage.delete(name: activePresetName)
+            appState.presets = appState.presetStorage.loadAll()
+            selectPreset("Default")
+            showToastMessage("Deleted preset.", isError: false)
+        } catch {
+            showToastMessage("Failed to delete preset: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    func importPresetFile(from url: URL) {
+        guard let appState else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let preset = try appState.presetStorage.importFromSillyTavern(url: url)
+            try appState.presetStorage.save(preset)
+            appState.presets = appState.presetStorage.loadAll()
+            selectPreset(preset.name)
+            showToastMessage("Imported preset: \(preset.name)", isError: false)
+        } catch {
+            showToastMessage("Failed to import preset: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    func exportCurrentPreset() {
+        guard let appState else { return }
+        guard let preset = appState.presets.first(where: { $0.name == activePresetName }) else { return }
+        let panel = NSSavePanel()
+        panel.title = "Export Preset"
+        panel.nameFieldStringValue = "\(preset.name).json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try appState.presetStorage.exportAsSillyTavern(preset)
+            try data.write(to: url, options: .atomic)
+            showToastMessage("Exported preset: \(preset.name)", isError: false)
+        } catch {
+            showToastMessage("Export failed: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    func exportAllPresets() {
+        guard let appState else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Choose Export Destination"
+        panel.message = "Select a folder to export presets into"
+        panel.prompt = "Export Here"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let baseURL = panel.url else { return }
+        var count = 0
+        for preset in appState.presets {
+            do {
+                let data = try appState.presetStorage.exportAsSillyTavern(preset)
+                let fileURL = baseURL.appendingPathComponent("\(preset.name).json")
+                try data.write(to: fileURL, options: .atomic)
+                count += 1
+            } catch {}
+        }
+        showToastMessage("Exported \(count) presets.", isError: false)
+    }
+
+    // MARK: - Reset
+
+    func resetAll() {
+        guard let appState else { return }
+        let fm = FileManager.default
+        // Remove all data directories and recreate
+        for subdir in DataDirectoryManager.subdirectories {
+            let dirURL = appState.directoryManager.rootDirectory.appendingPathComponent(subdir)
+            try? fm.removeItem(at: dirURL)
+        }
+        try? appState.directoryManager.ensureDirectoriesExist()
+        appState.settings = .default
+        appState.saveSettings()
+        appState.characters = []
+        appState.selectedCharacter = nil
+        appState.currentChat = nil
+        appState.groups = []
+        appState.selectedGroup = nil
+        appState.worldInfoBooks = []
+        appState.personas = [Persona(name: "User")]
+        try? appState.personaStorage.saveAll(appState.personas)
+        appState.presets = appState.presetStorage.loadAll()
+        activePresetName = "Default"
+        appState.activePresetName = "Default"
+
+        // Re-sync local state
+        userName = appState.settings.userName
+        defaultSystemPrompt = appState.settings.defaultSystemPrompt
+        selectedAPI = appState.settings.activeAPI
+        model = ""
+        baseURL = ""
+        generationParams = .default
+        advancedMode = false
+        experimentalFeatures = false
+        groupChatsEnabled = false
+        sendOnEnter = true
+        theme = .system
+        showToastMessage("Application reset to default state.", isError: false)
+    }
+
+    func resetCharacters() {
+        guard let appState else { return }
+        let fm = FileManager.default
+        let dir = appState.directoryManager.charactersDirectory
+        if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+            for file in files { try? fm.removeItem(at: file) }
+        }
+        // Also clear chats
+        let chatsDir = appState.directoryManager.chatsDirectory
+        if let files = try? fm.contentsOfDirectory(at: chatsDir, includingPropertiesForKeys: nil) {
+            for file in files { try? fm.removeItem(at: file) }
+        }
+        appState.characters = []
+        appState.selectedCharacter = nil
+        appState.currentChat = nil
+        showToastMessage("All characters and chats cleared.", isError: false)
+    }
+
+    func resetPersonas() {
+        guard let appState else { return }
+        appState.personas = [Persona(name: "User")]
+        try? appState.personaStorage.saveAll(appState.personas)
+        appState.settings.userName = "User"
+        userName = "User"
+        appState.saveSettings()
+        showToastMessage("Personas reset to default.", isError: false)
+    }
+
+    func resetWorldLore() {
+        guard let appState else { return }
+        let fm = FileManager.default
+        let dir = appState.directoryManager.worldsDirectory
+        if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+            for file in files { try? fm.removeItem(at: file) }
+        }
+        appState.worldInfoBooks = []
+        showToastMessage("All world lore cleared.", isError: false)
+    }
+
+    func resetPresets() {
+        guard let appState else { return }
+        let fm = FileManager.default
+        let dir = appState.directoryManager.presetsDirectory
+        if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+            for file in files { try? fm.removeItem(at: file) }
+        }
+        appState.presets = appState.presetStorage.loadAll() // Re-creates Default
+        activePresetName = "Default"
+        appState.activePresetName = "Default"
+        generationParams = .default
+        saveConfiguration()
+        showToastMessage("Presets reset to default.", isError: false)
+    }
+
+    // MARK: - Individual Import
+
+    func importCharacterFile(from url: URL) {
+        guard let appState else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let entry = try appState.characterStorage.importCharacter(from: url)
+            appState.characters.append(entry)
+            appState.characters.sort { $0.card.data.name.lowercased() < $1.card.data.name.lowercased() }
+            showToastMessage("Imported character: \(entry.card.data.name)", isError: false)
+        } catch {
+            showToastMessage("Failed to import character: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    func importWorldLoreFile(from url: URL) {
+        guard let appState else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let book = try appState.worldInfoStorage.loadWorldInfo(from: url)
+            try appState.worldInfoStorage.save(book)
+            if !appState.worldInfoBooks.contains(where: { $0.name == book.name }) {
+                appState.worldInfoBooks.append(book)
+            }
+            showToastMessage("Imported world lore: \(book.name)", isError: false)
+        } catch {
+            showToastMessage("Failed to import world lore: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    func importPersonaFile(from url: URL) {
+        guard let appState else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let data = try Data(contentsOf: url)
+            let imported = try JSONDecoder().decode([Persona].self, from: data)
+            var count = 0
+            for persona in imported where !appState.personas.contains(where: { $0.name == persona.name }) {
+                appState.personas.append(persona)
+                count += 1
+            }
+            try? appState.personaStorage.saveAll(appState.personas)
+            showToastMessage("Imported \(count) persona(s).", isError: false)
+        } catch {
+            showToastMessage("Failed to import personas: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    // MARK: - Character Export
+
+    func exportAllCharacters() {
+        guard let appState else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Choose Export Destination"
+        panel.message = "Select a folder to export characters into"
+        panel.prompt = "Export Here"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let baseURL = panel.url else { return }
+
+        let fm = FileManager.default
+        var count = 0
+        for entry in appState.characters {
+            let src = appState.directoryManager.charactersDirectory.appendingPathComponent(entry.filename)
+            let dst = baseURL.appendingPathComponent(entry.filename)
+            if !fm.fileExists(atPath: dst.path) {
+                try? fm.copyItem(at: src, to: dst)
+                count += 1
+            }
+        }
+        showToastMessage("Exported \(count) characters.", isError: false)
+    }
+
+    // MARK: - World Lore Export
+
+    func exportWorldLoreBook(_ book: WorldInfo) {
+        let panel = NSSavePanel()
+        panel.title = "Export World Lore"
+        panel.nameFieldStringValue = "\(book.name).json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(book)
+            try data.write(to: url, options: .atomic)
+            showToastMessage("Exported: \(book.name)", isError: false)
+        } catch {
+            showToastMessage("Export failed: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    func exportAllWorldLore() {
+        guard let appState else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Choose Export Destination"
+        panel.message = "Select a folder to export world lore into"
+        panel.prompt = "Export Here"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let baseURL = panel.url else { return }
+        var count = 0
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        for book in appState.worldInfoBooks {
+            do {
+                let data = try encoder.encode(book)
+                let fileURL = baseURL.appendingPathComponent("\(book.name).json")
+                try data.write(to: fileURL, options: .atomic)
+                count += 1
+            } catch {}
+        }
+        showToastMessage("Exported \(count) world lore books.", isError: false)
+    }
+
+    // MARK: - Persona Export
+
+    func exportPersona(_ persona: Persona) {
+        let panel = NSSavePanel()
+        panel.title = "Export Persona"
+        panel.nameFieldStringValue = "\(persona.name).json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted]
+            let data = try encoder.encode([persona])
+            try data.write(to: url, options: .atomic)
+            showToastMessage("Exported: \(persona.name)", isError: false)
+        } catch {
+            showToastMessage("Export failed: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    func exportAllPersonas() {
+        guard let appState else { return }
+        let panel = NSSavePanel()
+        panel.title = "Export All Personas"
+        panel.nameFieldStringValue = "personas.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted]
+            let data = try encoder.encode(appState.personas)
+            try data.write(to: url, options: .atomic)
+            showToastMessage("Exported \(appState.personas.count) personas.", isError: false)
+        } catch {
+            showToastMessage("Export failed: \(error.localizedDescription)", isError: true)
+        }
+    }
+
     // MARK: - Theme
 
     func applyTheme() {
@@ -701,6 +1132,8 @@ final class SettingsViewModel {
 
     func exportAllData() {
         guard let appState else { return }
+        isExporting = true
+        defer { isExporting = false }
         let panel = NSOpenPanel()
         panel.title = "Choose Export Destination"
         panel.message = "Select a folder to export SwiftTavern data into"

@@ -7,6 +7,7 @@ struct SwiftTavernApp: App {
     var body: some Scene {
         WindowGroup {
             MainView(appState: appState)
+                .ignoresSafeArea()
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1200, height: 750)
@@ -18,7 +19,7 @@ struct SwiftTavernApp: App {
                 .keyboardShortcut("n", modifiers: .command)
 
                 Button("New Character") {
-                    NotificationCenter.default.post(name: .newCharacter, object: nil)
+                    appState.selectedSidebarItem = .newCharacter
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             }
@@ -33,6 +34,11 @@ struct SwiftTavernApp: App {
                     NotificationCenter.default.post(name: .chatHistory, object: nil)
                 }
                 .keyboardShortcut("h", modifiers: [.command, .shift])
+
+                Button("Regenerate Response") {
+                    NotificationCenter.default.post(name: .regenerateResponse, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: .command)
 
                 Divider()
 
@@ -50,4 +56,5 @@ extension Notification.Name {
     static let newCharacter = Notification.Name("com.swifttavern.newCharacter")
     static let searchMessages = Notification.Name("com.swifttavern.searchMessages")
     static let chatHistory = Notification.Name("com.swifttavern.chatHistory")
+    static let regenerateResponse = Notification.Name("com.swifttavern.regenerateResponse")
 }

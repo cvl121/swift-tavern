@@ -15,6 +15,10 @@ final class ChatViewModel {
     var searchQuery = ""
     var searchResults: [(filename: String, matchingMessages: [ChatMessage])] = []
     var hasSearched = false
+    var inChatSearchQuery = ""
+    var inChatSearchResults: [Int] = []
+    var currentSearchResultIndex = 0
+    var showingInChatSearch = false
     var editingMessageIndex: Int?
     var editingText = ""
     var showDeleteConfirmation = false
@@ -23,6 +27,19 @@ final class ChatViewModel {
     var showingChatExporter = false
     var exportDocument: JSONDocument?
     var exportFilename: String?
+
+    // Bookmark filter
+    var showingBookmarksOnly = false
+
+    // Prompt preview
+    var showingPromptPreview = false
+    var promptPreviewText = ""
+
+    // Undo stack
+    private var undoStack: [(description: String, messages: [ChatMessage])] = []
+    private let maxUndoSteps = 10
+    var canUndo: Bool { !undoStack.isEmpty }
+    var lastUndoDescription: String? { undoStack.last?.description }
 
     /// Index into the combined greetings array for the first message swipe.
     /// 0 = firstMes, 1..N = alternateGreetings[0..N-1]
@@ -38,6 +55,32 @@ final class ChatViewModel {
 
     var messages: [ChatMessage] {
         appState?.currentChat?.messages ?? []
+    }
+
+    /// Messages to display, respecting the configured display limit
+    var displayMessages: [ChatMessage] {
+        guard let appState else { return [] }
+        let allMessages = appState.currentChat?.messages ?? []
+        let limit = appState.settings.chatDisplayLimit
+        if limit > 0 && allMessages.count > limit {
+            return Array(allMessages.suffix(limit))
+        }
+        return allMessages
+    }
+
+    /// Truncate a message for display if a length limit is set
+    func displayText(for message: ChatMessage) -> String {
+        guard let appState else { return message.mes }
+        let limit = appState.settings.chatMessageLengthLimit
+        if limit > 0 && message.mes.count > limit {
+            return String(message.mes.prefix(limit)) + "..."
+        }
+        return message.mes
+    }
+
+    /// Check if a message should be truncated for display
+    var messageLengthLimit: Int {
+        appState?.settings.chatMessageLengthLimit ?? 0
     }
 
     var characterName: String {
@@ -95,10 +138,7 @@ final class ChatViewModel {
         let charName = character.card.data.name
         let chatFilename = appState.currentChat?.filename
 
-        var worldInfoEntries: [WorldInfoEntry] = []
-        for book in appState.worldInfoBooks {
-            worldInfoEntries.append(contentsOf: book.entries.values)
-        }
+        let worldInfoEntries = resolveWorldInfoEntries(for: character, appState: appState)
 
         let persona = appState.personas.first { $0.name == appState.settings.userName }
 
@@ -112,6 +152,9 @@ final class ChatViewModel {
         )
 
         let shouldStream = config.generationParams.streamResponse
+
+        // Developer mode logging
+        appState.devLogger.log(.request, "[\(config.apiType.displayName)] POST \(config.effectiveBaseURL) | Model: \(config.model) | Messages: \(llmMessages.count) | Stream: \(shouldStream)")
 
         generationTask = Task {
             do {
@@ -154,11 +197,13 @@ final class ChatViewModel {
                         streamingText = ""
                         return
                     }
+                    appState.devLogger.log(.response, "[\(config.apiType.displayName)] Response received | Model: \(config.model) | Length: \(self.streamingText.count) chars")
                     finalizeResponse(characterName: charName)
                 }
             } catch is CancellationError {
-                // User cancelled - already handled
+                appState.devLogger.log(.info, "[\(config.apiType.displayName)] Request cancelled by user")
             } catch {
+                appState.devLogger.log(.error, "[\(config.apiType.displayName)] Error: \(error.localizedDescription)")
                 await MainActor.run {
                     if !self.streamingText.isEmpty {
                         finalizeResponse(characterName: charName)
@@ -246,6 +291,23 @@ final class ChatViewModel {
         }
     }
 
+    // MARK: - Undo
+
+    private func pushUndo(_ description: String) {
+        guard let appState, let messages = appState.currentChat?.messages else { return }
+        undoStack.append((description: description, messages: messages))
+        if undoStack.count > maxUndoSteps {
+            undoStack.removeFirst()
+        }
+    }
+
+    func undo() {
+        guard let appState, let last = undoStack.popLast() else { return }
+        appState.currentChat?.messages = last.messages
+        rewriteCurrentChat()
+        appState.showToast("Undid: \(last.description)")
+    }
+
     // MARK: - Message Actions
 
     /// Copy message text to clipboard
@@ -270,6 +332,7 @@ final class ChatViewModel {
             return
         }
 
+        pushUndo("edit message")
         appState.currentChat?.messages[index].mes = editingText
         rewriteCurrentChat()
         cancelEdit()
@@ -296,6 +359,7 @@ final class ChatViewModel {
             return
         }
 
+        pushUndo("delete message")
         appState.currentChat?.messages.remove(at: index)
         rewriteCurrentChat()
         showDeleteConfirmation = false
@@ -305,6 +369,7 @@ final class ChatViewModel {
     /// Delete a message and all messages after it (rewind conversation)
     func deleteMessageAndAfter(at index: Int) {
         guard let appState, index < (appState.currentChat?.messages.count ?? 0), index > 0 else { return }
+        pushUndo("delete messages")
         appState.currentChat?.messages.removeSubrange(index...)
         rewriteCurrentChat()
     }
@@ -348,6 +413,32 @@ final class ChatViewModel {
         hasSearched = true
     }
 
+    // MARK: - In-Chat Search
+
+    func searchInCurrentChat() {
+        let query = inChatSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            inChatSearchResults = []
+            currentSearchResultIndex = 0
+            return
+        }
+
+        inChatSearchResults = messages.enumerated().compactMap { index, message in
+            message.mes.localizedCaseInsensitiveContains(query) ? index : nil
+        }
+        currentSearchResultIndex = inChatSearchResults.isEmpty ? 0 : 0
+    }
+
+    func nextSearchResult() {
+        guard !inChatSearchResults.isEmpty else { return }
+        currentSearchResultIndex = (currentSearchResultIndex + 1) % inChatSearchResults.count
+    }
+
+    func previousSearchResult() {
+        guard !inChatSearchResults.isEmpty else { return }
+        currentSearchResultIndex = (currentSearchResultIndex - 1 + inChatSearchResults.count) % inChatSearchResults.count
+    }
+
     // MARK: - Chat Management
 
     func newChat() {
@@ -358,6 +449,8 @@ final class ChatViewModel {
             firstMessage: character.card.data.firstMes
         )
         greetingSwipeIndex = 0
+        appState.saveActiveChatFilename()
+        appState.showToast("New chat created")
     }
 
     func loadChat(filename: String) {
@@ -367,6 +460,7 @@ final class ChatViewModel {
             filename: filename
         )
         syncGreetingSwipeIndex()
+        appState.saveActiveChatFilename()
     }
 
     func deleteCurrentChat() {
@@ -456,6 +550,148 @@ final class ChatViewModel {
         } else {
             greetingSwipeIndex = 0
         }
+    }
+
+    // MARK: - Bookmarks
+
+    func toggleBookmark(at index: Int) {
+        guard let appState, index < (appState.currentChat?.messages.count ?? 0) else { return }
+        appState.currentChat?.messages[index].isBookmarked.toggle()
+        rewriteCurrentChat()
+    }
+
+    var bookmarkedMessages: [(Int, ChatMessage)] {
+        messages.enumerated().compactMap { index, message in
+            message.isBookmarked ? (index, message) : nil
+        }
+    }
+
+    // MARK: - Fork Chat
+
+    func forkFromMessage(at index: Int) {
+        guard let appState, let chat = appState.currentChat,
+              let character = appState.selectedCharacter,
+              index < chat.messages.count else { return }
+
+        let forkedMessages = Array(chat.messages[0...index])
+        let charName = character.card.data.name
+
+        do {
+            var newSession = try appState.chatStorage.createChat(
+                characterName: charName,
+                userName: appState.settings.userName,
+                firstMessage: nil
+            )
+            newSession.messages = forkedMessages
+            try appState.chatStorage.rewriteChat(newSession, characterName: charName)
+            appState.currentChat = newSession
+            appState.showToast("Chat forked")
+        } catch {
+            errorMessage = "Failed to fork chat: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - World Info Resolution
+
+    /// Resolve which world info entries to use: per-character > global > all books
+    private func resolveWorldInfoEntries(for character: CharacterEntry, appState: AppState) -> [WorldInfoEntry] {
+        // 1. Check per-character world lore (stored in extensions)
+        let charWorldLore = character.card.data.extensions?["swifttavern_world_lore"]?.value as? String
+
+        // 2. Fall back to global world lore setting
+        let activeWorldLore = charWorldLore ?? appState.settings.globalWorldLore
+
+        if let loreName = activeWorldLore,
+           let book = appState.worldInfoBooks.first(where: { $0.name == loreName }) {
+            return Array(book.entries.values)
+        }
+
+        // 3. No specific lore set — use all books
+        var entries: [WorldInfoEntry] = []
+        for book in appState.worldInfoBooks {
+            entries.append(contentsOf: book.entries.values)
+        }
+        return entries
+    }
+
+    // MARK: - Prompt Preview
+
+    func generatePromptPreview() {
+        guard let appState,
+              let character = appState.selectedCharacter else {
+            promptPreviewText = "No character selected."
+            return
+        }
+
+        let chatHistory = appState.currentChat?.messages ?? []
+        let worldInfoEntries = resolveWorldInfoEntries(for: character, appState: appState)
+
+        let persona = appState.personas.first { $0.name == appState.settings.userName }
+
+        let llmMessages = PromptBuilder.buildMessages(
+            character: character.card.data,
+            chatHistory: chatHistory,
+            userName: appState.settings.userName,
+            systemPrompt: appState.settings.defaultSystemPrompt,
+            worldInfoEntries: worldInfoEntries,
+            persona: persona
+        )
+
+        promptPreviewText = llmMessages.map { msg in
+            "[\(msg.role)]:\n\(msg.content)"
+        }.joined(separator: "\n\n---\n\n")
+    }
+
+    // MARK: - Token Count Estimation
+
+    var estimatedTokenCount: Int {
+        let allText = messages.map(\.mes).joined(separator: " ")
+        guard !allText.isEmpty else { return 0 }
+        let wordCount = allText.split(whereSeparator: { $0.isWhitespace }).count
+        return Int(Double(wordCount) * 1.3)
+    }
+
+    // MARK: - Export as Markdown
+
+    func exportAsMarkdown() {
+        guard let appState, let chat = appState.currentChat,
+              let character = appState.selectedCharacter else { return }
+
+        let markdown = formatChatAsMarkdown(
+            characterName: character.card.data.name,
+            metadata: chat.metadata,
+            messages: chat.messages
+        )
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = "\(character.card.data.name) - chat.md"
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                try? markdown.write(to: url, atomically: true, encoding: .utf8)
+                appState.showToast("Chat exported as Markdown")
+            }
+        }
+    }
+
+    func formatChatAsMarkdown(characterName: String, metadata: ChatMetadata, messages: [ChatMessage]) -> String {
+        var lines: [String] = []
+        lines.append("# Chat with \(characterName)")
+        if let createDate = metadata.createDate {
+            lines.append("Date: \(createDate)")
+        }
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+        for message in messages {
+            lines.append("**\(message.name):** \(message.mes)")
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+        }
+
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Export / Import

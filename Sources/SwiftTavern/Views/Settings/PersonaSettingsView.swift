@@ -6,9 +6,6 @@ struct PersonaSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("User Personas")
-                .font(.headline)
-
             // Existing personas
             ForEach(viewModel.personas) { persona in
                 HStack {
@@ -16,7 +13,7 @@ struct PersonaSettingsView: View {
                         AvatarImageView(
                             imageData: viewModel.loadAvatarData(for: persona),
                             name: persona.name,
-                            size: 36
+                            size: AvatarImageView.sizeMedium
                         )
 
                         Button(action: { viewModel.pickAvatarForExisting(persona) }) {
@@ -70,7 +67,7 @@ struct PersonaSettingsView: View {
                     AvatarImageView(
                         imageData: viewModel.editingAvatarData,
                         name: viewModel.editingName.isEmpty ? "?" : viewModel.editingName,
-                        size: 48
+                        size: AvatarImageView.sizeLarge
                     )
 
                     Button(action: { viewModel.pickAvatar() }) {

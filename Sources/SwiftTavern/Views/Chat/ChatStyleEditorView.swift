@@ -68,11 +68,53 @@ struct ChatStyleEditorView: View {
                         Text("Preview")
                             .font(.headline)
 
-                        MarkdownTextView(
-                            text: "*She leans against the doorframe, arms crossed.* \"Hey, I was wondering when you'd show up.\" She smiles warmly and steps aside to let you in.",
-                            chatStyle: chatStyle
-                        )
-                        .font(.system(size: chatStyle.fontSize))
+                        VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Dialogue (Quoted Text)")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                MarkdownTextView(
+                                    text: "\"Hey, I was wondering when you'd show up.\"",
+                                    chatStyle: chatStyle
+                                )
+                                .font(.system(size: chatStyle.fontSize))
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Actions (Italic/Emote)")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                MarkdownTextView(
+                                    text: "*She leans against the doorframe, arms crossed.*",
+                                    chatStyle: chatStyle
+                                )
+                                .font(.system(size: chatStyle.fontSize))
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Narrative")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                MarkdownTextView(
+                                    text: "She smiles warmly and steps aside to let you in.",
+                                    chatStyle: chatStyle
+                                )
+                                .font(.system(size: chatStyle.fontSize))
+                            }
+
+                            Divider()
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Combined Example")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                MarkdownTextView(
+                                    text: "*She leans against the doorframe, arms crossed.* \"Hey, I was wondering when you'd show up.\" She smiles warmly and steps aside to let you in.",
+                                    chatStyle: chatStyle
+                                )
+                                .font(.system(size: chatStyle.fontSize))
+                            }
+                        }
                         .padding(10)
                         .background(Color(.controlBackgroundColor))
                         .cornerRadius(12)

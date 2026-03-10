@@ -2,7 +2,9 @@ import Foundation
 
 /// A single chat message in a conversation
 struct ChatMessage: Codable, Identifiable, Equatable {
-    var id: String { "\(name)-\(sendDate)" }
+    /// Stable unique identifier for each message instance
+    let messageId: String
+    var id: String { messageId }
 
     var name: String
     var isUser: Bool
@@ -12,13 +14,16 @@ struct ChatMessage: Codable, Identifiable, Equatable {
     var extra: [String: AnyCodable]?
     var swipeId: Int?
     var swipes: [String]?
+    var isBookmarked: Bool
 
     enum CodingKeys: String, CodingKey {
         case name, mes, extra, swipes
+        case messageId = "message_id"
         case isUser = "is_user"
         case isSystem = "is_system"
         case sendDate = "send_date"
         case swipeId = "swipe_id"
+        case isBookmarked = "is_bookmarked"
     }
 
     init(
@@ -27,14 +32,32 @@ struct ChatMessage: Codable, Identifiable, Equatable {
         isSystem: Bool = false,
         sendDate: String = "",
         mes: String,
-        extra: [String: AnyCodable]? = nil
+        extra: [String: AnyCodable]? = nil,
+        isBookmarked: Bool = false
     ) {
+        self.messageId = UUID().uuidString
         self.name = name
         self.isUser = isUser
         self.isSystem = isSystem
         self.sendDate = sendDate.isEmpty ? ChatMessage.currentDateString() : sendDate
         self.mes = mes
         self.extra = extra
+        self.isBookmarked = isBookmarked
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Generate a new UUID if not present in stored data (backwards compatible)
+        messageId = try container.decodeIfPresent(String.self, forKey: .messageId) ?? UUID().uuidString
+        name = try container.decode(String.self, forKey: .name)
+        isUser = try container.decode(Bool.self, forKey: .isUser)
+        isSystem = try container.decodeIfPresent(Bool.self, forKey: .isSystem) ?? false
+        sendDate = try container.decode(String.self, forKey: .sendDate)
+        mes = try container.decode(String.self, forKey: .mes)
+        extra = try container.decodeIfPresent([String: AnyCodable].self, forKey: .extra)
+        swipeId = try container.decodeIfPresent(Int.self, forKey: .swipeId)
+        swipes = try container.decodeIfPresent([String].self, forKey: .swipes)
+        isBookmarked = try container.decodeIfPresent(Bool.self, forKey: .isBookmarked) ?? false
     }
 
     static func currentDateString() -> String {

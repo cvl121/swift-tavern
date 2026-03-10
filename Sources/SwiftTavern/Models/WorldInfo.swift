@@ -10,6 +10,18 @@ struct WorldInfo: Codable, Identifiable, Equatable {
         self.name = name
         self.entries = entries
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // SillyTavern world info files don't have a "name" field;
+        // the name is derived from the filename by WorldInfoStorageService.
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        entries = try container.decodeIfPresent([String: WorldInfoEntry].self, forKey: .entries) ?? [:]
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, entries
+    }
 }
 
 struct WorldInfoEntry: Codable, Identifiable, Equatable {
@@ -40,7 +52,7 @@ struct WorldInfoEntry: Codable, Identifiable, Equatable {
         uid: Int,
         keys: [String] = [],
         content: String = "",
-        enabled: Bool = true,
+        enabled: Bool = false,
         insertionOrder: Int = 100,
         caseSensitive: Bool = false,
         selective: Bool = false,
@@ -65,8 +77,18 @@ struct WorldInfoEntry: Codable, Identifiable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         uid = try container.decode(Int.self, forKey: .uid)
-        content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
-        comment = try container.decodeIfPresent(String.self, forKey: .comment) ?? ""
+        let rawContent = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
+        let rawComment = try container.decodeIfPresent(String.self, forKey: .comment) ?? ""
+        // SillyTavern stores lore text in "comment" with "content" empty;
+        // SwiftTavern uses "content" as the primary field for prompt injection.
+        // Normalize: if content is empty but comment has text, use comment as content.
+        if rawContent.isEmpty && !rawComment.isEmpty {
+            content = rawComment
+            comment = rawComment
+        } else {
+            content = rawContent
+            comment = rawComment
+        }
         selective = try container.decodeIfPresent(Bool.self, forKey: .selective) ?? false
         constant = try container.decodeIfPresent(Bool.self, forKey: .constant) ?? false
 

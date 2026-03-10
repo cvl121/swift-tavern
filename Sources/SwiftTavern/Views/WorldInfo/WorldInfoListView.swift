@@ -17,13 +17,67 @@ struct WorldInfoListView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
 
+                if let book = viewModel.selectedBook {
+                    Button(action: { viewModel.exportBook(book) }) {
+                        Label("Export", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
                 Button("New Book") {
                     viewModel.showingNewBookDialog = true
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+
+            // Active world lore status
+            if viewModel.activeWorldLoreName != nil || viewModel.globalWorldLoreName != nil {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let charLore = viewModel.characterWorldLoreName {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.blue)
+                            Text("Character:")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                            Text(charLore)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.blue)
+                            if let name = viewModel.selectedCharacterName {
+                                Text("(\(name))")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    if let globalLore = viewModel.globalWorldLoreName {
+                        HStack(spacing: 6) {
+                            Image(systemName: "globe")
+                                .font(.system(size: 10))
+                                .foregroundColor(.green)
+                            Text("Global:")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                            Text(globalLore)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.green)
+                            if viewModel.characterWorldLoreName != nil {
+                                Text("(overridden)")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                    .italic()
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+            }
 
             Divider()
 
@@ -42,27 +96,62 @@ struct WorldInfoListView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding()
             } else {
-                HSplitView {
-                    // Book list
-                    List(viewModel.books) { book in
-                        HStack {
-                            Text(book.name)
-                            Spacer()
-                            Text("\(book.entries.count) entries")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            viewModel.selectedBook = book
-                        }
-                        .contextMenu {
-                            Button("Delete", role: .destructive) {
-                                viewModel.deleteBook(book)
+                HStack(spacing: 0) {
+                    // Book list (fixed narrow width)
+                    VStack(spacing: 0) {
+                        List(viewModel.books) { book in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 4) {
+                                        Text(book.name)
+                                            .font(.system(size: 13, weight: .medium))
+                                            .lineLimit(1)
+                                        if viewModel.characterWorldLoreName == book.name {
+                                            Text("Active")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 1)
+                                                .background(Color.blue)
+                                                .cornerRadius(3)
+                                        } else if viewModel.characterWorldLoreName == nil && viewModel.globalWorldLoreName == book.name {
+                                            Text("Global")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 1)
+                                                .background(Color.green)
+                                                .cornerRadius(3)
+                                        }
+                                    }
+                                    Text("\(book.entries.count) entries")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                            .listRowBackground(
+                                viewModel.selectedBook?.name == book.name
+                                    ? Color.accentColor.opacity(0.15)
+                                    : Color.clear
+                            )
+                            .onTapGesture {
+                                viewModel.selectedBook = book
+                            }
+                            .contextMenu {
+                                Button("Delete", role: .destructive) {
+                                    viewModel.deleteBook(book)
+                                }
                             }
                         }
+                        .listStyle(.sidebar)
+                        .scrollContentBackground(.hidden)
                     }
-                    .frame(minWidth: 200)
+                    .frame(width: 200)
+
+                    Divider()
 
                     // Book editor
                     if var book = viewModel.selectedBook {
@@ -91,15 +180,6 @@ struct WorldInfoListView: View {
             ))
             Button("Cancel", role: .cancel) {}
             Button("Create") { viewModel.createBook() }
-        }
-        .fileImporter(
-            isPresented: $viewModel.showingImporter,
-            allowedContentTypes: [.json],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                viewModel.importWorldLore(from: url)
-            }
         }
     }
 }

@@ -15,11 +15,18 @@ extension Date {
         return formatter.string(from: self)
     }
 
-    /// Display-friendly relative date string
+    /// Display-friendly static timestamp
     var relativeDisplayString: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: self, relativeTo: Date())
+        let calendar = Calendar.current
+        let formatter = DateFormatter()
+        if calendar.isDateInToday(self) {
+            formatter.dateFormat = "h:mm a"
+        } else if calendar.isDate(self, equalTo: Date(), toGranularity: .year) {
+            formatter.dateFormat = "MMM d, h:mm a"
+        } else {
+            formatter.dateFormat = "MMM d, yyyy, h:mm a"
+        }
+        return formatter.string(from: self)
     }
 }
 

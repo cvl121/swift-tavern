@@ -46,4 +46,29 @@ final class ImageCache: @unchecked Sendable {
         setImage(nsImage, for: key)
         return nsImage
     }
+
+    /// Load a thumbnail-sized image from data, using cache
+    func loadThumbnail(data: Data, key: String, maxSize: CGFloat = 64) -> NSImage? {
+        let thumbKey = "\(key)-thumb-\(Int(maxSize))"
+        if let cached = image(for: thumbKey) {
+            return cached
+        }
+        guard let nsImage = NSImage(data: data) else { return nil }
+        let originalSize = nsImage.size
+        if originalSize.width <= maxSize && originalSize.height <= maxSize {
+            setImage(nsImage, for: thumbKey)
+            return nsImage
+        }
+        let scale = min(maxSize / originalSize.width, maxSize / originalSize.height)
+        let newSize = NSSize(width: originalSize.width * scale, height: originalSize.height * scale)
+        let thumbnail = NSImage(size: newSize)
+        thumbnail.lockFocus()
+        nsImage.draw(in: NSRect(origin: .zero, size: newSize),
+                     from: NSRect(origin: .zero, size: originalSize),
+                     operation: .copy,
+                     fraction: 1.0)
+        thumbnail.unlockFocus()
+        setImage(thumbnail, for: thumbKey)
+        return thumbnail
+    }
 }

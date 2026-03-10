@@ -3,6 +3,7 @@ import SwiftUI
 /// First-launch onboarding view explaining the app
 struct OnboardingView: View {
     var onDismiss: () -> Void
+    var onSetUpAPI: (() -> Void)?
 
     var body: some View {
         ScrollView {
@@ -88,7 +89,7 @@ struct OnboardingView: View {
                             .font(.headline)
                     }
 
-                    Text("SwiftTavern requires your own API key to chat with AI characters. We recommend **OpenRouter** as it gives you access to models from OpenAI, Anthropic, Google, Meta, and more with a single key.\n\nYour keys are stored securely in the macOS Keychain and never saved in plain text. You may see a one-time Keychain access prompt \u{2014} this is macOS verifying your permission.")
+                    Text("SwiftTavern requires your own API key to chat with AI characters. We recommend **OpenRouter** as it gives you access to models from OpenAI, Anthropic, Google, Meta, and more with a single key.\n\nYour keys are stored locally in the app's settings file and are never sent anywhere except to your chosen AI provider.")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -107,13 +108,29 @@ struct OnboardingView: View {
                         .frame(maxWidth: 500)
                 }
 
-                Button(action: onDismiss) {
-                    Text("Get Started")
-                        .font(.headline)
-                        .frame(maxWidth: 200)
+                VStack(spacing: 12) {
+                    HStack(spacing: 16) {
+                        Button(action: {
+                            onSetUpAPI?()
+                            onDismiss()
+                        }) {
+                            Text("Set Up API Key")
+                                .font(.headline)
+                                .frame(maxWidth: 200)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                    }
+
+                    HStack(spacing: 16) {
+                        Button(action: onDismiss) {
+                            Text("Skip for Now")
+                                .font(.system(size: 13))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
                 .padding(.top, 8)
                 .padding(.bottom, 24)
             }

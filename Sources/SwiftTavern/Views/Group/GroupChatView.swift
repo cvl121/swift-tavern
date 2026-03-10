@@ -50,6 +50,16 @@ struct GroupChatView: View {
                 onStop: { groupChatVM.stopGenerating() }
             )
         }
+        .alert("Delete Message", isPresented: $groupChatVM.showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                groupChatVM.pendingDeleteIndex = nil
+            }
+            Button("Delete", role: .destructive) {
+                groupChatVM.confirmDeleteMessage()
+            }
+        } message: {
+            Text("Are you sure you want to delete this message? This cannot be undone.")
+        }
     }
 
     private var groupHeader: some View {
@@ -81,20 +91,21 @@ struct GroupChatView: View {
 
     @ViewBuilder
     private func groupMessageBubble(index: Int, message: ChatMessage) -> some View {
+        let isLastAssistant = !message.isUser && index == groupChatVM.messages.count - 1
         let avatarData = groupChatVM.memberCharacters
             .first { $0.card.data.name == message.name }?.avatarData
         MessageBubbleView(
             message: message,
             avatarData: avatarData,
             index: index,
-            isEditing: false,
-            editText: .constant(""),
+            isEditing: groupChatVM.editingMessageIndex == index,
+            editText: $groupChatVM.editingText,
             onCopy: { groupChatVM.copyMessage(at: index) },
-            onEdit: {},
-            onSaveEdit: {},
-            onCancelEdit: {},
-            onDelete: {},
-            onRegenerate: nil,
+            onEdit: { groupChatVM.beginEditMessage(at: index) },
+            onSaveEdit: { groupChatVM.saveEditedMessage() },
+            onCancelEdit: { groupChatVM.cancelEdit() },
+            onDelete: { groupChatVM.requestDeleteMessage(at: index) },
+            onRegenerate: isLastAssistant ? { groupChatVM.regenerateLastMessage() } : nil,
             onDeleteAndAfter: nil
         )
     }

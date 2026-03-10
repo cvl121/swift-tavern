@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Main application view with custom sidebar layout
 struct MainView: View {
@@ -12,6 +13,7 @@ struct MainView: View {
     @State private var showOnboarding = false
     @State private var sidebarVisible = true
     @State private var sidebarWidth: CGFloat = 250
+    @State private var dragStartWidth: CGFloat = 250
 
     init(appState: AppState? = nil) {
         let state = appState ?? AppState()
@@ -22,7 +24,14 @@ struct MainView: View {
         _worldInfoVM = State(initialValue: WorldInfoViewModel(appState: state))
         _personaVM = State(initialValue: PersonaViewModel(appState: state))
         _groupChatVM = State(initialValue: GroupChatViewModel(appState: state))
+        _sidebarVisible = State(initialValue: state.settings.sidebarVisible)
+        _sidebarWidth = State(initialValue: CGFloat(state.settings.sidebarWidth))
+        _dragStartWidth = State(initialValue: CGFloat(state.settings.sidebarWidth))
     }
+
+    private let minSidebarWidth: CGFloat = 220
+    private let maxSidebarWidth: CGFloat = 400
+    private let minContentWidth: CGFloat = 500
 
     var body: some View {
         HStack(spacing: 0) {
@@ -34,10 +43,36 @@ struct MainView: View {
                     groupChatVM: groupChatVM
                 )
                 .frame(width: sidebarWidth)
-                .frame(minWidth: 200, maxWidth: 350)
                 .transition(.move(edge: .leading))
 
-                Divider()
+                // Resizable divider handle
+                Rectangle()
+                    .fill(Color(.separatorColor))
+                    .frame(width: 1)
+                    .overlay(
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(width: 8)
+                            .contentShape(Rectangle())
+                            .onHover { hovering in
+                                if hovering {
+                                    NSCursor.resizeLeftRight.push()
+                                } else {
+                                    NSCursor.pop()
+                                }
+                            }
+                            .gesture(
+                                DragGesture(coordinateSpace: .global)
+                                    .onChanged { value in
+                                        let newWidth = dragStartWidth + value.translation.width
+                                        sidebarWidth = min(maxSidebarWidth, max(minSidebarWidth, newWidth))
+                                    }
+                                    .onEnded { _ in
+                                        dragStartWidth = sidebarWidth
+                                        appState.settings.sidebarWidth = Double(sidebarWidth)
+                                    }
+                            )
+                    )
             }
 
             // Detail content
@@ -47,6 +82,7 @@ struct MainView: View {
                     Button(action: {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             sidebarVisible.toggle()
+                            appState.settings.sidebarVisible = sidebarVisible
                         }
                     }) {
                         Image(systemName: "sidebar.left")
@@ -64,8 +100,29 @@ struct MainView: View {
                 detailView
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .frame(minWidth: minContentWidth)
         }
-        .frame(minWidth: 1000, minHeight: 600)
+        .frame(minWidth: minSidebarWidth + minContentWidth + 1, minHeight: 600)
+        .animation(.easeInOut(duration: 0.2), value: sidebarVisible)
+        .clipped()
+        .overlay(alignment: .bottom) {
+            if let toast = appState.toastMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: appState.toastIsError ? "xmark.circle.fill" : "checkmark.circle.fill")
+                        .foregroundColor(appState.toastIsError ? .red : .green)
+                    Text(toast)
+                        .font(.system(size: 13))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.regularMaterial)
+                .cornerRadius(10)
+                .shadow(radius: 4)
+                .padding(.bottom, 20)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: appState.toastMessage != nil)
         .background(Color(.windowBackgroundColor))
         .onAppear {
             appState.loadAll()
@@ -75,24 +132,17 @@ struct MainView: View {
             }
         }
         .sheet(isPresented: $showOnboarding) {
-            OnboardingView {
-                appState.settings.hasCompletedOnboarding = true
-                appState.saveSettings()
-                showOnboarding = false
-            }
-        }
-        .sheet(isPresented: $characterListVM.showingCreator) {
-            CharacterEditorView(viewModel: CharacterEditorViewModel(appState: appState))
-        }
-        .sheet(isPresented: $characterListVM.showingEditor) {
-            if let entry = characterListVM.editingEntry {
-                CharacterEditorView(
-                    viewModel: CharacterEditorViewModel(appState: appState, character: entry),
-                    onDelete: {
-                        characterListVM.requestDeleteCharacter(entry)
-                    }
-                )
-            }
+            OnboardingView(
+                onDismiss: {
+                    appState.settings.hasCompletedOnboarding = true
+                    appState.saveSettings()
+                    showOnboarding = false
+                },
+                onSetUpAPI: {
+                    appState.selectedSidebarItem = .settings
+                    settingsVM.selectedSection = .api
+                }
+            )
         }
         .sheet(isPresented: $groupChatVM.showingGroupEditor) {
             GroupEditorView(appState: appState, groupChatVM: groupChatVM)
@@ -104,6 +154,33 @@ struct MainView: View {
         ) { result in
             if case .success(let urls) = result, let url = urls.first {
                 characterListVM.importCharacter(from: url)
+            }
+        }
+        .fileImporter(
+            isPresented: $personaVM.showingImporter,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                personaVM.importPersonas(from: url)
+            }
+        }
+        .fileImporter(
+            isPresented: $worldInfoVM.showingImporter,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                worldInfoVM.importWorldLore(from: url)
+            }
+        }
+        .fileImporter(
+            isPresented: $settingsVM.showingPresetImporterFile,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                settingsVM.importPresetFile(from: url)
             }
         }
     }
@@ -120,7 +197,14 @@ struct MainView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            detailContent
+            VStack(spacing: 0) {
+                detailContent
+                if appState.settings.developerMode {
+                    Divider()
+                    DevLogView(appState: appState)
+                        .frame(height: 160)
+                }
+            }
         }
     }
 
@@ -145,6 +229,27 @@ struct MainView: View {
 
         case .characters:
             CharacterListView(appState: appState, characterListVM: characterListVM)
+
+        case .characterInfo(let filename):
+            if let entry = appState.characters.first(where: { $0.filename == filename }) {
+                CharacterEditorWrapper(
+                    appState: appState,
+                    entry: entry,
+                    onDelete: { characterListVM.requestDeleteCharacter(entry) },
+                    onBack: { appState.selectedSidebarItem = .characters }
+                )
+                .id(filename)
+            } else {
+                welcomeView
+            }
+
+        case .newCharacter:
+            CharacterEditorWrapper(
+                appState: appState,
+                entry: nil,
+                onBack: { appState.selectedSidebarItem = .characters }
+            )
+            .id("new-character")
 
         case .settings:
             SettingsView(viewModel: settingsVM, personaVM: personaVM)
@@ -173,7 +278,7 @@ struct MainView: View {
 
             HStack(spacing: 12) {
                 Button("New Character") {
-                    characterListVM.showingCreator = true
+                    appState.selectedSidebarItem = .newCharacter
                 }
                 .buttonStyle(.borderedProminent)
 
@@ -184,5 +289,29 @@ struct MainView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Wrapper that owns the CharacterEditorViewModel as @State so it persists across re-renders
+private struct CharacterEditorWrapper: View {
+    let appState: AppState
+    let entry: CharacterEntry?
+    var onDelete: (() -> Void)?
+    var onBack: (() -> Void)?
+
+    @State private var viewModel: CharacterEditorViewModel?
+
+    var body: some View {
+        if let vm = viewModel {
+            CharacterEditorView(
+                viewModel: vm,
+                onDelete: onDelete,
+                onBack: onBack
+            )
+        } else {
+            Color.clear.onAppear {
+                viewModel = CharacterEditorViewModel(appState: appState, character: entry)
+            }
+        }
     }
 }

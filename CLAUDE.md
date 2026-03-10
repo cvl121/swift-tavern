@@ -11,7 +11,7 @@ swift build
 # Release build
 swift build -c release
 
-# Run all tests (107 tests)
+# Run all tests (154 tests)
 swift test
 
 # Run a single test
@@ -32,7 +32,7 @@ All commands run from the project root where `Package.swift` lives.
 `SwiftTavernApp` → `AppState` (central observable container) → ViewModels → Services
 
 - **AppState** (`App/AppState.swift`): Owns all storage services and shared state (characters, chats, settings, navigation). Initialized at app launch, passed to views.
-- **ViewModels** (`ViewModels/`): `@Observable` classes coordinating business logic. `ChatViewModel` handles message generation, streaming, swipes. `SettingsViewModel` manages API config and Keychain access.
+- **ViewModels** (`ViewModels/`): `@Observable` classes coordinating business logic. `ChatViewModel` handles message generation, streaming, swipes. `SettingsViewModel` manages API config.
 - **Services** (`Services/`): Stateless helpers for storage, LLM calls, PNG parsing, prompt building.
 
 ### LLM Provider System
@@ -42,7 +42,7 @@ Protocol-based with factory pattern:
 - `LLMServiceFactory.create(for:)` returns the appropriate implementation
 - Five providers: OpenRouter (default), OpenAI, Claude, Gemini, Ollama
 - `SSEParser` handles Server-Sent Events for streaming responses
-- API keys stored in macOS Keychain via `SecretsStorageService` (service: `com.swifttavern.macos`)
+- API keys stored in `AppSettings.apiKeys` dictionary, persisted to the settings JSON file
 
 ### Character Card System (TavernCardV2)
 
@@ -100,7 +100,7 @@ Template variables `{{char}}` and `{{user}}` are replaced via `String.replacingT
 | `Models/Character.swift` | `TavernCardV2`, `CharacterData`, `CharacterEntry`, `AnyCodable` | TavernCardV2 spec: name, description, personality, scenario, firstMes, mesExample, alternateGreetings, characterBook, systemPrompt, postHistoryInstructions, tags. `CharacterEntry` wraps a loaded card with filename + avatarData. |
 | `Models/ChatMessage.swift` | `ChatMessage`, `ChatMetadata`, `ChatSession` | Message: name, isUser, sendDate (ISO8601), mes (content), swipes (alternative responses). Metadata: userName, characterName, createDate. Session: metadata + messages array. |
 | `Models/APIConfiguration.swift` | `APIConfiguration` | Resolved config: apiType, apiKey, baseURL, model, generationParams. Property `effectiveBaseURL` resolves provider default. |
-| `Models/Settings.swift` | `AppTheme`, `AppSettings`, `APIType`, `APIConfigurationData` | AppSettings: activeAPI, userName, theme, chatStyle, advancedMode, experimentalFeatures, etc. APIType enum: openai/claude/gemini/ollama/openrouter with defaultModels, requiresAPIKey, keychainKey. |
+| `Models/Settings.swift` | `AppTheme`, `AppSettings`, `APIType`, `APIConfigurationData` | AppSettings: activeAPI, userName, theme, chatStyle, advancedMode, experimentalFeatures, apiKeys, etc. APIType enum: openai/claude/gemini/ollama/openrouter with defaultModels, requiresAPIKey. |
 | `Models/CharacterBook.swift` | `CharacterBook`, `CharacterBookEntry`, `EntryPosition` | Embedded world info in character cards. Entries with keys, content, position, priority. EntryPosition: beforeChar/afterChar/beforeExample/afterExample/atDepth. |
 | `Models/WorldInfo.swift` | `WorldInfo`, `WorldInfoEntry` | Standalone world info books. Custom Codable handles SillyTavern field alternates (key/keys, order/insertion_order, disable/enabled). |
 | `Models/Persona.swift` | `Persona` | User identity: name, description, optional avatarFilename. |
@@ -137,7 +137,6 @@ Template variables `{{char}}` and `{{user}}` are replaced via `String.replacingT
 | `Services/Storage/CharacterStorageService.swift` | `CharacterStorageService` | CRUD for character PNG files. `importCharacter()` handles PNG (embedded card) or JSON (bare CharacterData, TavernCardV2, or SillyTavern wrapper). Creates minimal 1x1 PNG if no avatar. |
 | `Services/Storage/ChatStorageService.swift` | `ChatStorageService` | Thread-safe JSONL I/O via DispatchQueue. First line = metadata, subsequent = messages. Methods: createChat, loadChat, appendMessage, rewriteChat, listChats (sorted newest-first), searchChats, exportChat. |
 | `Services/Storage/SettingsStorageService.swift` | `SettingsStorageService` | JSON persistence of AppSettings. Pretty-printed, sorted keys. Returns .default on missing/corrupt file. |
-| `Services/Storage/SecretsStorageService.swift` | `SecretsStorageService` | API key caching from macOS Keychain. Single batch load on init (one prompt). In-memory cache for reads. Methods: save/get/delete/hasAPIKey. |
 | `Services/Storage/WorldInfoStorageService.swift` | `WorldInfoStorageService` | JSON world info books in worlds/ directory. |
 | `Services/Storage/PersonaStorageService.swift` | `PersonaStorageService` | personas.json + avatar files in "User Avatars/". Defaults to [Persona(name: "User")]. |
 | `Services/Storage/GroupStorageService.swift` | `GroupStorageService` | JSON group definitions in groups/ directory. |
@@ -157,7 +156,6 @@ Template variables `{{char}}` and `{{user}}` are replaced via `String.replacingT
 | `Utilities/Extensions/Data+PNG.swift` | Data extensions | `readUInt32()` (big-endian), `uint32BigEndian()`, `pngSignature`, `isPNG` |
 | `Utilities/Extensions/Date+Formatting.swift` | Date/String extensions | `sillyTavernDateString`, `chatFileDateString` (filename-safe), `relativeDisplayString` ("2d ago"), String `sillyTavernDate` parser |
 | `Utilities/FileManagerExtensions.swift` | FileManager extension | `appSupportDirectory` → ~/Library/Application Support/SwiftTavern/ (fallback ~/.swifttavern/) |
-| `Utilities/KeychainHelper.swift` | `KeychainHelper`, `KeychainError` | macOS Keychain access. Service: "com.swifttavern.macos". Methods: save/load/delete/loadAll. Batch loadAll() avoids repeated permission prompts. |
 | `Utilities/ImageCache.swift` | `ImageCache` | Thread-safe NSCache wrapper. 200 image limit, 100MB budget. Concurrent DispatchQueue. |
 
 ### ViewModels
@@ -177,7 +175,7 @@ Template variables `{{char}}` and `{{user}}` are replaced via `String.replacingT
 | File | Contents | Summary |
 |------|----------|---------|
 | `Views/MainView.swift` | `MainView` | Root layout: HStack with sidebar + detail. Inline sidebar toggle (hiddenTitleBar). Routes SidebarItem to detail views. Onboarding sheet on first launch. |
-| `Views/OnboardingView.swift` | `OnboardingView` | First-launch modal (600x650). Features overview, "Bring Your Own API Key" notice (recommends OpenRouter), Keychain security note. |
+| `Views/OnboardingView.swift` | `OnboardingView` | First-launch modal (600x650). Features overview, "Bring Your Own API Key" notice (recommends OpenRouter). |
 | `Views/Sidebar/SidebarView.swift` | `SidebarView`, `ConversationRowView` | Main sidebar: search bar, character conversation list with avatars/dates, optional Groups section, bottom nav (Characters, World Lore, Personas, Settings). Context menus for edit/export/delete. |
 | `Views/Sidebar/CharacterRowView.swift` | `CharacterRowView` | Individual character row display. |
 | `Views/Character/CharacterListView.swift` | `CharacterListView` | Grid/list of all characters with search. |
@@ -228,7 +226,7 @@ Template variables `{{char}}` and `{{user}}` are replaced via `String.replacingT
 File picker → `CharacterListViewModel.importCharacter(from: url)` → `CharacterStorageService.importCharacter()` → PNG: `CharacterCardParser.parse()` (reads tEXt chunk, base64 decodes JSON) / JSON: direct decode → saves to characters/ → reloads `appState.characters`
 
 ### LLM Provider Switch
-Settings UI → `SettingsViewModel.switchAPI()` → loads `APIConfigurationData` for provider → retrieves API key from `SecretsStorageService` cache → updates model list → `appState.saveSettings()`
+Settings UI → `SettingsViewModel.switchAPI()` → loads `APIConfigurationData` for provider → retrieves API key from `appState.settings.apiKeys` → updates model list → `appState.saveSettings()`
 
 ### Prompt Assembly
 `PromptBuilder.buildMessages(chat, character, settings, persona, worldInfoBooks)` → system prompt → character description/personality/scenario → active persona description → character book entries (constant + keyword-triggered via scanDepth) → world info entries (constant + triggered) → few-shot examples (parsed from mesExample) → chat history messages → post-history instructions → template var replacement ({{char}}/{{user}})
@@ -240,7 +238,7 @@ Settings UI → `SettingsViewModel.switchAPI()` → loads `APIConfigurationData`
 | Characters | PNG with base64 JSON in tEXt chunk (key: "chara") | ~/Library/Application Support/SwiftTavern/characters/ |
 | Chats | JSONL (line 1 = metadata, lines 2+ = messages) | ~/Library/Application Support/SwiftTavern/chats/{CharName}/ |
 | Settings | JSON (pretty-printed, sorted keys) | ~/Library/Application Support/SwiftTavern/user/settings.json |
-| API Keys | macOS Keychain (service: "com.swifttavern.macos") | System Keychain |
+| API Keys | JSON (in `apiKeys` field of settings) | ~/Library/Application Support/SwiftTavern/user/settings.json |
 | World Info | JSON files | ~/Library/Application Support/SwiftTavern/worlds/ |
 | Personas | personas.json + avatar PNGs | ~/Library/Application Support/SwiftTavern/user/ + User Avatars/ |
 | Groups | JSON files | ~/Library/Application Support/SwiftTavern/groups/ |

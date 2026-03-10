@@ -1,16 +1,17 @@
 import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 /// ViewModel for the character list sidebar
 @Observable
 final class CharacterListViewModel {
     var searchText = ""
     var showingImporter = false
-    var showingCreator = false
     var showingExporter = false
     var exportDocument: PNGDocument?
     var exportFilename: String?
+    var errorMessage: String?
 
     var filteredCharacters: [CharacterEntry] {
         guard let appState else { return [] }
@@ -29,15 +30,12 @@ final class CharacterListViewModel {
         self.appState = appState
     }
 
-    var showingEditor = false
-    var editingEntry: CharacterEntry?
-
     var showDeleteConfirmation = false
     var pendingDeleteEntry: CharacterEntry?
 
     func editCharacter(_ entry: CharacterEntry) {
-        editingEntry = entry
-        showingEditor = true
+        guard let appState else { return }
+        appState.selectedSidebarItem = .characterInfo(entry.filename)
     }
 
     func requestDeleteCharacter(_ entry: CharacterEntry) {
@@ -64,19 +62,48 @@ final class CharacterListViewModel {
         guard let appState else { return }
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-        if let entry = try? appState.characterStorage.importCharacter(from: url) {
+        do {
+            let entry = try appState.characterStorage.importCharacter(from: url)
             appState.characters.append(entry)
             appState.characters.sort { $0.card.data.name.lowercased() < $1.card.data.name.lowercased() }
+            errorMessage = nil
+            appState.showToast("Character imported: \(entry.card.data.name)")
+        } catch {
+            errorMessage = "Failed to import character: \(error.localizedDescription)"
         }
     }
 
     func exportCharacter(_ entry: CharacterEntry) {
         guard let appState else { return }
         let sourceURL = appState.directoryManager.charactersDirectory.appendingPathComponent(entry.filename)
-        guard let data = try? Data(contentsOf: sourceURL) else { return }
-        exportDocument = PNGDocument(data: data)
-        exportFilename = entry.filename
-        showingExporter = true
+        do {
+            let data = try Data(contentsOf: sourceURL)
+            exportDocument = PNGDocument(data: data)
+            exportFilename = entry.filename
+            showingExporter = true
+        } catch {
+            errorMessage = "Failed to export character: \(error.localizedDescription)"
+        }
+    }
+
+    func exportAllCharacters() {
+        guard let appState else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Choose Export Destination"
+        panel.message = "Select a folder to export characters into"
+        panel.prompt = "Export Here"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let baseURL = panel.url else { return }
+        let fm = FileManager.default
+        for entry in appState.characters {
+            let src = appState.directoryManager.charactersDirectory.appendingPathComponent(entry.filename)
+            let dst = baseURL.appendingPathComponent(entry.filename)
+            if !fm.fileExists(atPath: dst.path) {
+                try? fm.copyItem(at: src, to: dst)
+            }
+        }
     }
 
     func selectCharacter(_ entry: CharacterEntry) {
@@ -85,20 +112,40 @@ final class CharacterListViewModel {
         appState.selectedSidebarItem = .character(entry.filename)
         appState.selectedGroup = nil
 
-        // Load most recent chat or create new one
-        if let chats = try? appState.chatStorage.listChats(for: entry.card.data.name),
-           let mostRecent = chats.first {
+        let charName = entry.card.data.name
+
+        // Try to restore the previously active chat for this character
+        if let activeChatFilename = appState.settings.activeChatPerCharacter[entry.filename],
+           let session = try? appState.chatStorage.loadChat(characterName: charName, filename: activeChatFilename) {
+            appState.currentChat = session
+        } else if let chats = try? appState.chatStorage.listChats(for: charName),
+                  let mostRecent = chats.first {
             appState.currentChat = try? appState.chatStorage.loadChat(
-                characterName: entry.card.data.name,
+                characterName: charName,
                 filename: mostRecent.filename
             )
         } else {
             appState.currentChat = try? appState.chatStorage.createChat(
-                characterName: entry.card.data.name,
+                characterName: charName,
                 userName: appState.settings.userName,
                 firstMessage: entry.card.data.firstMes
             )
         }
+        appState.saveActiveChatFilename()
+    }
+
+    func startNewChat(_ entry: CharacterEntry) {
+        guard let appState else { return }
+        appState.setActiveCharacter(entry)
+        appState.selectedSidebarItem = .character(entry.filename)
+        appState.selectedGroup = nil
+
+        appState.currentChat = try? appState.chatStorage.createChat(
+            characterName: entry.card.data.name,
+            userName: appState.settings.userName,
+            firstMessage: entry.card.data.firstMes
+        )
+        appState.saveActiveChatFilename()
     }
 }
 

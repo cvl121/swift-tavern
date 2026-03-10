@@ -26,6 +26,23 @@ struct AppSettings: Codable {
     var hasCompletedOnboarding: Bool
     var chatStyle: ChatStyle
     var imageGenerationEnabled: Bool
+    var showChatButtonLabels: Bool
+    var showIndividualConversations: Bool
+    var developerMode: Bool
+    /// Maps character filename → active chat filename
+    var activeChatPerCharacter: [String: String]
+    /// Maps APIType.rawValue → API key
+    var apiKeys: [String: String]
+    /// Global world lore book name (used when character has no specific world lore)
+    var globalWorldLore: String?
+    /// Maximum number of messages to display in chat (0 = unlimited)
+    var chatDisplayLimit: Int
+    /// Maximum character length per message to display (0 = unlimited)
+    var chatMessageLengthLimit: Int
+    /// Sidebar width preference
+    var sidebarWidth: Double
+    /// Whether sidebar is visible
+    var sidebarVisible: Bool
 
     enum CodingKeys: String, CodingKey {
         case activeAPI = "active_api"
@@ -43,6 +60,16 @@ struct AppSettings: Codable {
         case hasCompletedOnboarding = "has_completed_onboarding"
         case chatStyle = "chat_style"
         case imageGenerationEnabled = "image_generation_enabled"
+        case showChatButtonLabels = "show_chat_button_labels"
+        case showIndividualConversations = "show_individual_conversations"
+        case developerMode = "developer_mode"
+        case activeChatPerCharacter = "active_chat_per_character"
+        case apiKeys = "api_keys"
+        case globalWorldLore = "global_world_lore"
+        case chatDisplayLimit = "chat_display_limit"
+        case chatMessageLengthLimit = "chat_message_length_limit"
+        case sidebarWidth = "sidebar_width"
+        case sidebarVisible = "sidebar_visible"
     }
 
     init(from decoder: Decoder) throws {
@@ -62,6 +89,16 @@ struct AppSettings: Codable {
         hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false
         chatStyle = try container.decodeIfPresent(ChatStyle.self, forKey: .chatStyle) ?? .default
         imageGenerationEnabled = try container.decodeIfPresent(Bool.self, forKey: .imageGenerationEnabled) ?? false
+        showChatButtonLabels = try container.decodeIfPresent(Bool.self, forKey: .showChatButtonLabels) ?? false
+        showIndividualConversations = try container.decodeIfPresent(Bool.self, forKey: .showIndividualConversations) ?? false
+        developerMode = try container.decodeIfPresent(Bool.self, forKey: .developerMode) ?? false
+        activeChatPerCharacter = try container.decodeIfPresent([String: String].self, forKey: .activeChatPerCharacter) ?? [:]
+        apiKeys = try container.decodeIfPresent([String: String].self, forKey: .apiKeys) ?? [:]
+        globalWorldLore = try container.decodeIfPresent(String.self, forKey: .globalWorldLore)
+        chatDisplayLimit = try container.decodeIfPresent(Int.self, forKey: .chatDisplayLimit) ?? 0
+        chatMessageLengthLimit = try container.decodeIfPresent(Int.self, forKey: .chatMessageLengthLimit) ?? 0
+        sidebarWidth = try container.decodeIfPresent(Double.self, forKey: .sidebarWidth) ?? 250
+        sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
     }
 
     init(
@@ -70,7 +107,15 @@ struct AppSettings: Codable {
         defaultSystemPrompt: String, apiConfigurations: [String: APIConfigurationData],
         advancedMode: Bool, experimentalFeatures: Bool, groupChatsEnabled: Bool,
         sendOnEnter: Bool, theme: AppTheme = .system, hasCompletedOnboarding: Bool = false,
-        chatStyle: ChatStyle = .default, imageGenerationEnabled: Bool = false
+        chatStyle: ChatStyle = .default, imageGenerationEnabled: Bool = false,
+        showChatButtonLabels: Bool = false, showIndividualConversations: Bool = false,
+        developerMode: Bool = false, activeChatPerCharacter: [String: String] = [:],
+        apiKeys: [String: String] = [:],
+        globalWorldLore: String? = nil,
+        chatDisplayLimit: Int = 0,
+        chatMessageLengthLimit: Int = 0,
+        sidebarWidth: Double = 250,
+        sidebarVisible: Bool = true
     ) {
         self.activeAPI = activeAPI
         self.activeModel = activeModel
@@ -87,6 +132,16 @@ struct AppSettings: Codable {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.chatStyle = chatStyle
         self.imageGenerationEnabled = imageGenerationEnabled
+        self.showChatButtonLabels = showChatButtonLabels
+        self.showIndividualConversations = showIndividualConversations
+        self.developerMode = developerMode
+        self.activeChatPerCharacter = activeChatPerCharacter
+        self.apiKeys = apiKeys
+        self.globalWorldLore = globalWorldLore
+        self.chatDisplayLimit = chatDisplayLimit
+        self.chatMessageLengthLimit = chatMessageLengthLimit
+        self.sidebarWidth = sidebarWidth
+        self.sidebarVisible = sidebarVisible
     }
 
     static let `default` = AppSettings(
@@ -112,6 +167,7 @@ enum APIType: String, Codable, CaseIterable, Identifiable {
     case gemini
     case ollama
     case openrouter
+    case novelai
 
     var id: String { rawValue }
 
@@ -122,15 +178,72 @@ enum APIType: String, Codable, CaseIterable, Identifiable {
         case .gemini: return "Google Gemini"
         case .ollama: return "Ollama (Local)"
         case .openrouter: return "OpenRouter"
+        case .novelai: return "NovelAI"
         }
     }
 
     var defaultModels: [String] {
         switch self {
-        case .openai: return ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o1-mini"]
-        case .claude: return ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-3-5-sonnet-20241022"]
-        case .gemini: return ["gemini-2.0-flash", "gemini-2.0-pro", "gemini-1.5-pro", "gemini-1.5-flash"]
-        case .ollama: return ["llama3.1", "llama3", "mistral", "mixtral", "codellama", "phi3"]
+        case .openai: return [
+            // GPT-4o family
+            "gpt-4o", "gpt-4o-2024-11-20", "gpt-4o-2024-08-06", "gpt-4o-2024-05-13",
+            "gpt-4o-mini", "gpt-4o-mini-2024-07-18",
+            "gpt-4o-audio-preview", "gpt-4o-audio-preview-2024-12-17",
+            // GPT-4.1 family
+            "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+            // o-series reasoning
+            "o1", "o1-2024-12-17", "o1-mini", "o1-mini-2024-09-12", "o1-preview", "o1-preview-2024-09-12",
+            "o3", "o3-mini", "o3-mini-2025-01-31", "o4-mini",
+            // GPT-4
+            "gpt-4-turbo", "gpt-4-turbo-2024-04-09", "gpt-4-turbo-preview", "gpt-4-0125-preview", "gpt-4-1106-preview",
+            "gpt-4", "gpt-4-0613",
+            // GPT-3.5
+            "gpt-3.5-turbo", "gpt-3.5-turbo-0125", "gpt-3.5-turbo-1106",
+            // Chatgpt
+            "chatgpt-4o-latest",
+        ]
+        case .claude: return [
+            // Claude 4 family
+            "claude-opus-4-6", "claude-sonnet-4-6",
+            // Claude 3.5 family
+            "claude-3-5-sonnet-20241022", "claude-3-5-sonnet-20240620", "claude-3-5-haiku-20241022",
+            // Claude 3 family
+            "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307",
+            // Claude 4.5 / Haiku
+            "claude-haiku-4-5-20251001",
+        ]
+        case .gemini: return [
+            // Gemini 2.5
+            "gemini-2.5-pro-preview-06-05", "gemini-2.5-flash-preview-05-20",
+            // Gemini 2.0
+            "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite", "gemini-2.0-flash-lite-001",
+            "gemini-2.0-flash-thinking-exp", "gemini-2.0-pro-exp",
+            // Gemini 1.5
+            "gemini-1.5-pro", "gemini-1.5-pro-001", "gemini-1.5-pro-002",
+            "gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-flash-002",
+            "gemini-1.5-flash-8b", "gemini-1.5-flash-8b-001",
+        ]
+        case .ollama: return [
+            // Meta Llama
+            "llama3.3", "llama3.2", "llama3.1", "llama3.1:70b", "llama3.1:405b", "llama3",
+            // Mistral
+            "mistral", "mistral-nemo", "mistral-large", "mistral-small", "mixtral", "mixtral:8x22b",
+            // Qwen
+            "qwen2.5", "qwen2.5:72b", "qwen2.5-coder", "qwen2.5-coder:32b", "qwq",
+            // Google
+            "gemma2", "gemma2:27b",
+            // DeepSeek
+            "deepseek-r1", "deepseek-r1:70b", "deepseek-v2.5",
+            // Microsoft
+            "phi4", "phi3", "phi3:medium",
+            // Coding
+            "codellama", "codellama:70b", "starcoder2",
+            // Other
+            "command-r", "command-r-plus", "solar", "nous-hermes2", "dolphin-mixtral", "vicuna", "neural-chat",
+        ]
+        case .novelai: return [
+            "kayra-v2", "kayra-v1", "clio-v1", "llama-3-erato-v1",
+        ]
         case .openrouter: return [
             // OpenAI
             "openai/gpt-4o", "openai/gpt-4o-mini", "openai/gpt-4-turbo", "openai/o1", "openai/o1-mini", "openai/o3-mini",
@@ -160,8 +273,11 @@ enum APIType: String, Codable, CaseIterable, Identifiable {
         self != .ollama
     }
 
-    var keychainKey: String {
-        "api_key_\(rawValue)"
+    var defaultBaseURL: String? {
+        switch self {
+        case .novelai: return "https://text.novelai.net"
+        default: return nil
+        }
     }
 }
 

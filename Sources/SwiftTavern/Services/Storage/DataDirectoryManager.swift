@@ -11,6 +11,7 @@ final class DataDirectoryManager {
         "groups",
         "group chats",
         "worlds",
+        "presets",
         "user",
         "User Avatars",
         "backgrounds",
@@ -46,6 +47,7 @@ final class DataDirectoryManager {
     var userDirectory: URL { url(for: "user") }
     var userAvatarsDirectory: URL { url(for: "User Avatars") }
     var backgroundsDirectory: URL { url(for: "backgrounds") }
+    var presetsDirectory: URL { url(for: "presets") }
     var backupsDirectory: URL { url(for: "backups") }
 
     var settingsFile: URL {

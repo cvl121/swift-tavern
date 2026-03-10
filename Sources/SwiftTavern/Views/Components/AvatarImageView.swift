@@ -3,6 +3,11 @@ import AppKit
 
 /// Displays a character or user avatar with caching and fallback
 struct AvatarImageView: View {
+    static let sizeSmall: CGFloat = 28
+    static let sizeMedium: CGFloat = 36
+    static let sizeLarge: CGFloat = 48
+    static let sizeXLarge: CGFloat = 80
+
     let imageData: Data?
     let name: String
     var size: CGFloat = 40
@@ -10,12 +15,11 @@ struct AvatarImageView: View {
     var body: some View {
         ZStack {
             if let data = imageData,
-               let nsImage = ImageCache.shared.loadImage(data: data, key: "\(name)-\(data.count)") {
+               let nsImage = loadCachedImage(data: data) {
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                // Default head outline silhouette
                 Circle()
                     .fill(Color(.separatorColor).opacity(0.3))
                 Image(systemName: "person.crop.circle")
@@ -27,5 +31,13 @@ struct AvatarImageView: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
+    }
+
+    private func loadCachedImage(data: Data) -> NSImage? {
+        let key = "\(name)-\(data.count)"
+        if size <= AvatarImageView.sizeMedium {
+            return ImageCache.shared.loadThumbnail(data: data, key: key, maxSize: size * 2)
+        }
+        return ImageCache.shared.loadImage(data: data, key: key)
     }
 }

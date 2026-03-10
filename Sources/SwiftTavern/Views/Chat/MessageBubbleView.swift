@@ -14,6 +14,8 @@ struct MessageBubbleView: View {
     let onDelete: () -> Void
     let onRegenerate: (() -> Void)?
     let onDeleteAndAfter: (() -> Void)?
+    var onToggleBookmark: (() -> Void)?
+    var onFork: (() -> Void)?
     var chatStyle: ChatStyle?
 
     // Swipe support (greeting or response swipes)
@@ -37,14 +39,22 @@ struct MessageBubbleView: View {
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
                 // Name and timestamp
                 HStack {
+                    if message.isUser { Spacer() }
+
                     Text(message.name)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.secondary)
 
+                    if message.isBookmarked {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.yellow)
+                    }
+
                     if let date = message.sendDate.sillyTavernDate {
                         Text(date.relativeDisplayString)
                             .font(.system(size: 10))
-                            .foregroundColor(.secondary.opacity(0.7))
+                            .foregroundColor(.secondary)
                     }
                 }
 
@@ -71,9 +81,14 @@ struct MessageBubbleView: View {
                 } else {
                     MarkdownTextView(text: message.mes, chatStyle: chatStyle)
                         .font(.system(size: chatStyle?.fontSize ?? 13))
-                        .padding(10)
-                        .background(message.isUser ? Color.accentColor.opacity(0.15) : Color(.controlBackgroundColor))
-                        .cornerRadius(12)
+                        .textSelection(.disabled)
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(message.isUser
+                                    ? Color.accentColor.opacity(0.08)
+                                    : Color(.controlBackgroundColor).opacity(0.5))
+                        )
                 }
 
                 // Swipe arrows (greeting or response swipes)
@@ -103,15 +118,31 @@ struct MessageBubbleView: View {
             .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
 
             if message.isUser {
-                AvatarImageView(imageData: nil, name: message.name, size: 32)
+                AvatarImageView(imageData: avatarData, name: message.name, size: 32)
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
+        .overlay(
+            Rectangle()
+                .fill(Color(.separatorColor).opacity(0.3))
+                .frame(height: 0.5),
+            alignment: .bottom
+        )
+        .contentShape(Rectangle())
         .contextMenu {
             Button("Copy") { onCopy() }
-                .keyboardShortcut("c", modifiers: .command)
             Button("Edit") { onEdit() }
+            if let onToggleBookmark {
+                Button(message.isBookmarked ? "Remove Bookmark" : "Bookmark") {
+                    onToggleBookmark()
+                }
+            }
+            if let onFork {
+                Button("Fork from Here") {
+                    onFork()
+                }
+            }
             Divider()
             if let onRegenerate, !message.isUser {
                 Button("Regenerate") { onRegenerate() }

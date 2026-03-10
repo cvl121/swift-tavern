@@ -14,6 +14,8 @@ enum LLMServiceFactory {
             return OllamaService()
         case .openrouter:
             return OpenRouterService()
+        case .novelai:
+            return NovelAIService()
         }
     }
 }

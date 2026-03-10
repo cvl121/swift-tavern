@@ -23,9 +23,19 @@ struct ChatHistoryPickerView: View {
             Divider()
 
             if chatList.isEmpty {
-                Text("No chat history")
-                    .foregroundColor(.secondary)
-                    .padding()
+                VStack(spacing: 12) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 32))
+                        .foregroundColor(.secondary)
+                    Text("No chat history")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    Text("Start a conversation to see it here.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding()
             } else {
                 List {
                     ForEach(chatList, id: \.filename) { chat in

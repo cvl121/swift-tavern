@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 
 /// ViewModel for World Info management
 @Observable
@@ -18,6 +19,26 @@ final class WorldInfoViewModel {
 
     var books: [WorldInfo] {
         appState?.worldInfoBooks ?? []
+    }
+
+    /// The global world lore name from settings
+    var globalWorldLoreName: String? {
+        appState?.settings.globalWorldLore
+    }
+
+    /// The per-character world lore name for the currently selected character
+    var characterWorldLoreName: String? {
+        appState?.selectedCharacter?.card.data.extensions?["swifttavern_world_lore"]?.value as? String
+    }
+
+    /// The effective active world lore name (character override > global)
+    var activeWorldLoreName: String? {
+        characterWorldLoreName ?? globalWorldLoreName
+    }
+
+    /// The currently selected character name (for display)
+    var selectedCharacterName: String? {
+        appState?.selectedCharacter?.card.data.name
     }
 
     func createBook() {
@@ -64,6 +85,22 @@ final class WorldInfoViewModel {
             selectedBook = book
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func exportBook(_ book: WorldInfo) {
+        let panel = NSSavePanel()
+        panel.title = "Export World Lore"
+        panel.nameFieldStringValue = "\(book.name).json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(book)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            errorMessage = "Export failed: \(error.localizedDescription)"
         }
     }
 

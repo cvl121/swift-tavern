@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Main chat interface view
 struct ChatView: View {
@@ -6,6 +7,7 @@ struct ChatView: View {
     @Bindable var chatVM: ChatViewModel
 
     @State private var showingChatStyleEditor = false
+    @State private var autoScrollEnabled = true
 
     /// Load avatar data for the active user persona
     private var userAvatarData: Data? {
@@ -25,9 +27,15 @@ struct ChatView: View {
 
             Divider()
 
-            // Search bar (toggleable)
+            // Cross-chat search bar (toggleable)
             if chatVM.showingSearch {
                 searchBar
+                Divider()
+            }
+
+            // In-chat search bar
+            if chatVM.showingInChatSearch {
+                inChatSearchBar
                 Divider()
             }
 
@@ -35,7 +43,11 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(chatVM.messages.enumerated()), id: \.element.id) { index, message in
+                        let allDisplayMessages = chatVM.displayMessages
+                        let displayMessages = chatVM.showingBookmarksOnly
+                            ? allDisplayMessages.enumerated().filter { $0.element.isBookmarked }
+                            : Array(allDisplayMessages.enumerated())
+                        ForEach(displayMessages, id: \.element.id) { index, message in
                             messageBubble(index: index, message: message)
                                 .id(message.id)
                         }
@@ -53,19 +65,50 @@ struct ChatView: View {
 
                         // Error with retry
                         if let error = chatVM.errorMessage {
-                            HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle")
-                                    .foregroundColor(.orange)
-                                Text(error)
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                                Button("Retry") {
-                                    chatVM.errorMessage = nil
-                                    chatVM.retryLastResponse()
+                            VStack(spacing: 8) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                    Text(error)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(3)
                                 }
-                                .controlSize(.small)
-                                .buttonStyle(.borderedProminent)
+                                HStack(spacing: 8) {
+                                    Button("Dismiss") {
+                                        chatVM.errorMessage = nil
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
+                                    Button("Retry") {
+                                        chatVM.errorMessage = nil
+                                        chatVM.retryLastResponse()
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.borderedProminent)
+                                }
                             }
+                            .padding(12)
+                            .background(Color.orange.opacity(0.08))
+                            .cornerRadius(8)
+                            .padding(.horizontal, 12)
+                        }
+
+                        // Generate button when last message is from user (no response yet)
+                        if !chatVM.isGenerating,
+                           chatVM.errorMessage == nil,
+                           let lastMsg = chatVM.messages.last,
+                           lastMsg.isUser {
+                            Button(action: { chatVM.generateResponse() }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.system(size: 12))
+                                    Text("Generate Response")
+                                        .font(.system(size: 12))
+                                }
+                            }
+                            .controlSize(.small)
+                            .buttonStyle(.borderedProminent)
                             .padding()
                         }
 
@@ -80,13 +123,17 @@ struct ChatView: View {
                     scrollToBottom(proxy: proxy, animated: false)
                 }
                 .onChange(of: chatVM.messages.count) {
-                    scrollToBottom(proxy: proxy, animated: true)
+                    if autoScrollEnabled {
+                        scrollToBottom(proxy: proxy, animated: true)
+                    }
                 }
                 .onChange(of: chatVM.streamingText) {
-                    scrollToBottom(proxy: proxy, animated: false)
+                    if autoScrollEnabled {
+                        scrollToBottom(proxy: proxy, animated: false)
+                    }
                 }
                 .onChange(of: chatVM.isGenerating) { _, isGenerating in
-                    if !isGenerating {
+                    if !isGenerating && autoScrollEnabled {
                         scrollToBottom(proxy: proxy, animated: true)
                     }
                 }
@@ -99,6 +146,9 @@ struct ChatView: View {
                 text: $chatVM.inputText,
                 isGenerating: chatVM.isGenerating,
                 sendOnEnter: appState.settings.sendOnEnter,
+                activeModel: appState.currentAPIConfiguration()?.model,
+                characterName: chatVM.characterName,
+                tokenCount: chatVM.estimatedTokenCount,
                 onSend: { chatVM.sendMessage() },
                 onStop: { chatVM.stopGenerating() }
             )
@@ -111,6 +161,22 @@ struct ChatView: View {
             }
             if chatVM.editingMessageIndex != nil {
                 chatVM.cancelEdit()
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(keys: [KeyEquivalent("z")], phases: .down) { keyPress in
+            guard keyPress.modifiers.contains(.command) else { return .ignored }
+            if chatVM.canUndo {
+                chatVM.undo()
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(keys: [KeyEquivalent("r")], phases: .down) { keyPress in
+            guard keyPress.modifiers.contains(.command) else { return .ignored }
+            if !chatVM.isGenerating, let lastMsg = chatVM.messages.last, !lastMsg.isUser {
+                chatVM.regenerateResponse()
                 return .handled
             }
             return .ignored
@@ -141,6 +207,31 @@ struct ChatView: View {
                     appState.saveSettings()
                 }
             ))
+        }
+        // Prompt preview sheet
+        .sheet(isPresented: $chatVM.showingPromptPreview) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Prompt Preview")
+                        .font(.headline)
+                    Spacer()
+                    Button("Done") { chatVM.showingPromptPreview = false }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                }
+                .padding()
+
+                Divider()
+
+                ScrollView {
+                    Text(chatVM.promptPreviewText)
+                        .font(.system(size: 12, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                }
+            }
+            .frame(minWidth: 600, minHeight: 400)
         }
         // Chat import
         .fileImporter(
@@ -193,6 +284,16 @@ struct ChatView: View {
         let hasResponseSwipes = isLastAssistant && (message.swipes?.count ?? 0) > 1
         let avatarData = message.isUser ? userAvatarData : appState.selectedCharacter?.avatarData
 
+        let truncatedMessage: ChatMessage = {
+            let limit = appState.settings.chatMessageLengthLimit
+            if limit > 0 && message.mes.count > limit {
+                var msg = message
+                msg.mes = String(message.mes.prefix(limit)) + "\n\n*[Message truncated — \(message.mes.count) characters]*"
+                return msg
+            }
+            return message
+        }()
+
         let swipe: MessageBubbleView.SwipeInfo? = {
             if isGreeting && chatVM.hasGreetingSwipes {
                 return MessageBubbleView.SwipeInfo(
@@ -219,7 +320,7 @@ struct ChatView: View {
         }()
 
         MessageBubbleView(
-            message: message,
+            message: truncatedMessage,
             avatarData: avatarData,
             index: index,
             isEditing: chatVM.editingMessageIndex == index,
@@ -231,6 +332,8 @@ struct ChatView: View {
             onDelete: { chatVM.requestDeleteMessage(at: index) },
             onRegenerate: isLastAssistant ? { chatVM.regenerateResponse() } : nil,
             onDeleteAndAfter: index > 0 ? { chatVM.deleteMessageAndAfter(at: index) } : nil,
+            onToggleBookmark: { chatVM.toggleBookmark(at: index) },
+            onFork: { chatVM.forkFromMessage(at: index) },
             chatStyle: activeChatStyle,
             swipeInfo: swipe
         )
@@ -238,56 +341,133 @@ struct ChatView: View {
 
     // MARK: - Chat Header
 
+    private var showLabels: Bool {
+        appState.settings.showChatButtonLabels
+    }
+
+    @ViewBuilder
+    private func chatHeaderLabel(_ title: String, icon: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+            if showLabels {
+                Text(title)
+                    .font(.system(size: 11))
+            }
+        }
+    }
+
     private var chatHeader: some View {
-        HStack {
+        HStack(spacing: 6) {
             if let character = appState.selectedCharacter {
-                AvatarImageView(imageData: character.avatarData, name: character.card.data.name, size: 28)
+                AvatarImageView(imageData: character.avatarData, name: character.card.data.name, size: AvatarImageView.sizeSmall)
                 Text(character.card.data.name)
                     .font(.headline)
+                    .underline(false)
+                    .onTapGesture {
+                        appState.selectedSidebarItem = .characterInfo(character.filename)
+                    }
+                    .onHover { hovering in
+                        if hovering {
+                            NSCursor.pointingHand.push()
+                        } else {
+                            NSCursor.pop()
+                        }
+                    }
+                    .help("View character info")
+            }
+
+            if !chatVM.messages.isEmpty {
+                Text("~\(chatVM.estimatedTokenCount) tokens")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
             }
 
             Spacer()
 
-            Button(action: { showingChatStyleEditor = true }) {
-                Image(systemName: "paintbrush")
-            }
-            .help("Chat Style")
-
-            Button(action: { chatVM.showingSearch.toggle() }) {
-                Image(systemName: "magnifyingglass")
-            }
-            .help("Search Chats (Cmd+F)")
-            .keyboardShortcut("f", modifiers: .command)
-
-            Button(action: { chatVM.newChat() }) {
-                Image(systemName: "plus.message")
-            }
-            .help("New Chat (Cmd+N)")
-
-            Button(action: { chatVM.showingChatPicker = true }) {
-                Image(systemName: "clock.arrow.circlepath")
-            }
-            .help("Chat History")
-
-            Menu {
-                Button("Export Chat") { chatVM.exportCurrentChat() }
-                Button("Import Chat") { chatVM.showingChatImporter = true }
-            } label: {
-                Image(systemName: "square.and.arrow.up")
-            }
-            .help("Export / Import")
-
-            if !chatVM.isGenerating,
-               let lastMsg = chatVM.messages.last, !lastMsg.isUser {
-                Button(action: { chatVM.regenerateResponse() }) {
-                    Image(systemName: "arrow.clockwise")
+            Group {
+                Button(action: {
+                    chatVM.showingBookmarksOnly.toggle()
+                }) {
+                    chatHeaderLabel("Bookmarks", icon: chatVM.showingBookmarksOnly ? "star.fill" : "star")
+                        .foregroundColor(chatVM.showingBookmarksOnly ? .yellow : .primary)
                 }
+                .help("Filter Bookmarked Messages")
+
+                Button(action: {
+                    autoScrollEnabled.toggle()
+                }) {
+                    chatHeaderLabel("Auto-Scroll", icon: autoScrollEnabled ? "arrow.down.circle.fill" : "arrow.down.circle")
+                }
+                .help(autoScrollEnabled ? "Disable Auto-Scroll" : "Enable Auto-Scroll")
+
+                Button(action: { showingChatStyleEditor = true }) {
+                    chatHeaderLabel("Style", icon: "paintbrush")
+                }
+                .help("Chat Style")
+
+                Button(action: {
+                    chatVM.showingInChatSearch.toggle()
+                    if !chatVM.showingInChatSearch {
+                        chatVM.inChatSearchQuery = ""
+                        chatVM.inChatSearchResults = []
+                    }
+                }) {
+                    chatHeaderLabel("Find", icon: "magnifyingglass")
+                }
+                .help("Search in Chat (Cmd+F)")
+                .keyboardShortcut("f", modifiers: .command)
+
+                Button(action: { chatVM.showingSearch.toggle() }) {
+                    chatHeaderLabel("Search All", icon: "text.magnifyingglass")
+                }
+                .help("Search All Chats")
+
+                Button(action: { chatVM.newChat() }) {
+                    chatHeaderLabel("New Chat", icon: "plus.message")
+                }
+                .help("New Chat (Cmd+N)")
+
+                Button(action: { chatVM.showingChatPicker = true }) {
+                    chatHeaderLabel("History", icon: "clock.arrow.circlepath")
+                }
+                .help("Chat History")
+
+                Menu {
+                    Button("Export Chat") { chatVM.exportCurrentChat() }
+                    Button("Export as Markdown") { chatVM.exportAsMarkdown() }
+                    Button("Import Chat") { chatVM.showingChatImporter = true }
+                    Divider()
+                    Button("View Prompt") {
+                        chatVM.generatePromptPreview()
+                        chatVM.showingPromptPreview = true
+                    }
+                } label: {
+                    chatHeaderLabel("More", icon: "square.and.arrow.up")
+                }
+                .help("Export / Import")
+
+            }
+            .buttonStyle(.borderless)
+
+            if chatVM.canUndo {
+                Button(action: { chatVM.undo() }) {
+                    chatHeaderLabel("Undo", icon: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderless)
+                .help("Undo: \(chatVM.lastUndoDescription ?? "") (Cmd+Z)")
+            }
+
+            if !chatVM.isGenerating, let lastMsg = chatVM.messages.last, !lastMsg.isUser {
+                Button(action: { chatVM.regenerateResponse() }) {
+                    chatHeaderLabel("Regenerate", icon: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
                 .help("Regenerate Last Response")
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .buttonStyle(.borderless)
     }
 
     // MARK: - Search Bar
@@ -334,5 +514,53 @@ struct ChatView: View {
                     .padding(.bottom, 4)
             }
         }
+    }
+
+    // MARK: - In-Chat Search Bar
+
+    private var inChatSearchBar: some View {
+        HStack(spacing: 8) {
+            TextField("Find in conversation...", text: $chatVM.inChatSearchQuery)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { chatVM.searchInCurrentChat() }
+
+            if !chatVM.inChatSearchResults.isEmpty {
+                Text("\(chatVM.currentSearchResultIndex + 1)/\(chatVM.inChatSearchResults.count)")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .monospacedDigit()
+
+                Button(action: { chatVM.previousSearchResult() }) {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderless)
+
+                Button(action: { chatVM.nextSearchResult() }) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderless)
+            } else if !chatVM.inChatSearchQuery.isEmpty {
+                Text("No matches")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            Button("Find") { chatVM.searchInCurrentChat() }
+                .controlSize(.small)
+
+            Button(action: {
+                chatVM.showingInChatSearch = false
+                chatVM.inChatSearchQuery = ""
+                chatVM.inChatSearchResults = []
+            }) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 }

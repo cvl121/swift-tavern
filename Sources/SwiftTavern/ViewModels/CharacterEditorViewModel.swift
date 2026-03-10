@@ -19,10 +19,61 @@ final class CharacterEditorViewModel {
     var alternateGreetings: [String] = []
     var avatarData: Data?
     var showingAvatarPicker = false
+    var selectedWorldLore: String?
 
     var isEditing: Bool
     var originalFilename: String?
     var errorMessage: String?
+
+    // Original values for change tracking
+    private var originalName: String
+    private var originalDescription: String
+    private var originalPersonality: String
+    private var originalScenario: String
+    private var originalFirstMes: String
+    private var originalMesExample: String
+    private var originalCreatorNotes: String
+    private var originalSystemPrompt: String
+    private var originalPostHistoryInstructions: String
+    private var originalTags: String
+    private var originalCreator: String
+    private var originalAlternateGreetings: [String]
+    private var originalAvatarData: Data?
+    private var originalWorldLore: String?
+
+    var hasUnsavedChanges: Bool {
+        if isEditing {
+            return name != originalName ||
+                description != originalDescription ||
+                personality != originalPersonality ||
+                scenario != originalScenario ||
+                firstMes != originalFirstMes ||
+                mesExample != originalMesExample ||
+                creatorNotes != originalCreatorNotes ||
+                systemPrompt != originalSystemPrompt ||
+                postHistoryInstructions != originalPostHistoryInstructions ||
+                tags != originalTags ||
+                creator != originalCreator ||
+                alternateGreetings != originalAlternateGreetings ||
+                avatarData != originalAvatarData ||
+                selectedWorldLore != originalWorldLore
+        } else {
+            // New character: any non-empty field means unsaved changes
+            return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                !description.isEmpty ||
+                !personality.isEmpty ||
+                !scenario.isEmpty ||
+                !firstMes.isEmpty ||
+                !mesExample.isEmpty ||
+                !creatorNotes.isEmpty ||
+                !systemPrompt.isEmpty ||
+                !postHistoryInstructions.isEmpty ||
+                !tags.isEmpty ||
+                !creator.isEmpty ||
+                !alternateGreetings.isEmpty ||
+                avatarData != nil
+        }
+    }
 
     private weak var appState: AppState?
 
@@ -46,7 +97,43 @@ final class CharacterEditorViewModel {
             self.alternateGreetings = data.alternateGreetings
             self.avatarData = char.avatarData
             self.originalFilename = char.filename
+            self.selectedWorldLore = (data.extensions?["swifttavern_world_lore"]?.value as? String)
+
+            // Store originals
+            self.originalName = data.name
+            self.originalDescription = data.description
+            self.originalPersonality = data.personality
+            self.originalScenario = data.scenario
+            self.originalFirstMes = data.firstMes
+            self.originalMesExample = data.mesExample
+            self.originalCreatorNotes = data.creatorNotes
+            self.originalSystemPrompt = data.systemPrompt
+            self.originalPostHistoryInstructions = data.postHistoryInstructions
+            self.originalTags = data.tags.joined(separator: ", ")
+            self.originalCreator = data.creator
+            self.originalAlternateGreetings = data.alternateGreetings
+            self.originalAvatarData = char.avatarData
+            self.originalWorldLore = self.selectedWorldLore
+        } else {
+            self.originalName = ""
+            self.originalDescription = ""
+            self.originalPersonality = ""
+            self.originalScenario = ""
+            self.originalFirstMes = ""
+            self.originalMesExample = ""
+            self.originalCreatorNotes = ""
+            self.originalSystemPrompt = ""
+            self.originalPostHistoryInstructions = ""
+            self.originalTags = ""
+            self.originalCreator = ""
+            self.originalAlternateGreetings = []
+            self.originalAvatarData = nil
+            self.originalWorldLore = nil
         }
+    }
+
+    var worldInfoBookNames: [String] {
+        appState?.worldInfoBooks.map(\.name) ?? []
     }
 
     func pickAvatar() {
@@ -74,6 +161,11 @@ final class CharacterEditorViewModel {
             return false
         }
 
+        var extensions: [String: AnyCodable]? = nil
+        if let worldLore = selectedWorldLore {
+            extensions = ["swifttavern_world_lore": AnyCodable(worldLore)]
+        }
+
         let charData = CharacterData(
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             description: description,
@@ -86,7 +178,8 @@ final class CharacterEditorViewModel {
             postHistoryInstructions: postHistoryInstructions,
             alternateGreetings: alternateGreetings,
             tags: tags.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
-            creator: creator
+            creator: creator,
+            extensions: extensions
         )
 
         let card = TavernCardV2(data: charData)

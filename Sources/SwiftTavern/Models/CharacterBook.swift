@@ -51,6 +51,16 @@ enum EntryPosition: String, Codable, Equatable, CaseIterable {
     case afterExample = "after_example"
     case atDepth = "at_depth"
 
+    var displayName: String {
+        switch self {
+        case .beforeChar: return "Before Character"
+        case .afterChar: return "After Character"
+        case .beforeExample: return "Before Examples"
+        case .afterExample: return "After Examples"
+        case .atDepth: return "At Depth"
+        }
+    }
+
     // Also support integer coding for SillyTavern compatibility
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()

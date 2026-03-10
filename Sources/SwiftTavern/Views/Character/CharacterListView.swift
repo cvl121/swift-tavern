@@ -1,9 +1,30 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Full character list view shown in the detail pane when "Characters" is selected in the sidebar
 struct CharacterListView: View {
     @Bindable var appState: AppState
     @Bindable var characterListVM: CharacterListViewModel
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        var handled = false
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { data, _ in
+                    guard let data = data as? Data,
+                          let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                    let ext = url.pathExtension.lowercased()
+                    if ext == "png" || ext == "json" {
+                        DispatchQueue.main.async {
+                            characterListVM.importCharacter(from: url)
+                        }
+                    }
+                }
+                handled = true
+            }
+        }
+        return handled
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -20,13 +41,22 @@ struct CharacterListView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
 
-                Button(action: { characterListVM.showingCreator = true }) {
+                Button(action: { characterListVM.exportAllCharacters() }) {
+                    Label("Export All", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button(action: {
+                    appState.selectedSidebarItem = .newCharacter
+                }) {
                     Label("New Character", systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
 
             Divider()
 
@@ -49,13 +79,18 @@ struct CharacterListView: View {
                         ForEach(characterListVM.filteredCharacters) { entry in
                             CharacterListRow(
                                 entry: entry,
-                                onEdit: { characterListVM.editCharacter(entry) },
-                                onNewChat: { characterListVM.selectCharacter(entry) },
+                                onSelect: {
+                                    appState.selectedSidebarItem = .characterInfo(entry.filename)
+                                },
+                                onNewChat: { characterListVM.startNewChat(entry) },
                                 onDelete: { characterListVM.requestDeleteCharacter(entry) }
                             )
                         }
                     }
                     .padding(16)
+                }
+                .onDrop(of: [.png, .json, .fileURL], isTargeted: nil) { providers in
+                    handleDrop(providers: providers)
                 }
             }
         }
@@ -65,14 +100,13 @@ struct CharacterListView: View {
 /// A row in the character list view showing character info with action buttons
 private struct CharacterListRow: View {
     let entry: CharacterEntry
-    let onEdit: () -> Void
+    let onSelect: () -> Void
     let onNewChat: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
-            AvatarImageView(imageData: entry.avatarData, name: entry.card.data.name, size: 48)
-                .onTapGesture(perform: onEdit)
+            AvatarImageView(imageData: entry.avatarData, name: entry.card.data.name, size: AvatarImageView.sizeLarge)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.card.data.name)
@@ -108,12 +142,6 @@ private struct CharacterListRow: View {
             .controlSize(.small)
             .help("Start or resume chat")
 
-            Button(action: onEdit) {
-                Image(systemName: "pencil")
-            }
-            .buttonStyle(.borderless)
-            .help("Edit Character")
-
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
             }
@@ -123,5 +151,7 @@ private struct CharacterListRow: View {
         .padding(12)
         .background(Color(.controlBackgroundColor))
         .cornerRadius(8)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
     }
 }

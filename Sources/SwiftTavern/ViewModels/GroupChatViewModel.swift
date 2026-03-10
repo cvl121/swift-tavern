@@ -161,10 +161,103 @@ final class GroupChatViewModel {
         }
     }
 
+    var editingMessageIndex: Int?
+    var editingText = ""
+    var showDeleteConfirmation = false
+    var pendingDeleteIndex: Int?
+
     func copyMessage(at index: Int) {
         guard index < messages.count else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(messages[index].mes, forType: .string)
+    }
+
+    func beginEditMessage(at index: Int) {
+        guard index < messages.count else { return }
+        editingMessageIndex = index
+        editingText = messages[index].mes
+    }
+
+    func saveEditedMessage() {
+        guard let appState, let index = editingMessageIndex,
+              index < (appState.currentChat?.messages.count ?? 0) else {
+            cancelEdit()
+            return
+        }
+
+        appState.currentChat?.messages[index].mes = editingText
+        rewriteCurrentGroupChat()
+        cancelEdit()
+    }
+
+    func cancelEdit() {
+        editingMessageIndex = nil
+        editingText = ""
+    }
+
+    func requestDeleteMessage(at index: Int) {
+        pendingDeleteIndex = index
+        showDeleteConfirmation = true
+    }
+
+    func confirmDeleteMessage() {
+        guard let appState, let index = pendingDeleteIndex,
+              index < (appState.currentChat?.messages.count ?? 0) else {
+            showDeleteConfirmation = false
+            pendingDeleteIndex = nil
+            return
+        }
+
+        appState.currentChat?.messages.remove(at: index)
+        rewriteCurrentGroupChat()
+        showDeleteConfirmation = false
+        pendingDeleteIndex = nil
+    }
+
+    func deleteMessage(at index: Int) {
+        guard let appState, index < (appState.currentChat?.messages.count ?? 0) else { return }
+        appState.currentChat?.messages.remove(at: index)
+        rewriteCurrentGroupChat()
+    }
+
+    func editMessage(at index: Int, newText: String) {
+        guard let appState, index < (appState.currentChat?.messages.count ?? 0) else { return }
+        appState.currentChat?.messages[index].mes = newText
+        rewriteCurrentGroupChat()
+    }
+
+    func regenerateLastMessage() {
+        guard let appState, let group = appState.selectedGroup, !isGenerating else { return }
+
+        // Remove last assistant message and regenerate
+        if let lastIndex = appState.currentChat?.messages.indices.last,
+           let lastMsg = appState.currentChat?.messages[lastIndex],
+           !lastMsg.isUser {
+            appState.currentChat?.messages.removeLast()
+            rewriteCurrentGroupChat()
+        }
+
+        generateGroupResponse(group: group)
+    }
+
+    private func rewriteCurrentGroupChat() {
+        guard let appState, let chat = appState.currentChat else { return }
+        // Rewrite by recreating the file with metadata + all messages
+        let fileURL = appState.directoryManager.groupChatsDirectory.appendingPathComponent(chat.filename)
+        let encoder = JSONEncoder()
+        var lines: [String] = []
+        if let metadataData = try? encoder.encode(chat.metadata),
+           let metadataLine = String(data: metadataData, encoding: .utf8) {
+            lines.append(metadataLine)
+        }
+        for message in chat.messages {
+            if let msgData = try? encoder.encode(message),
+               let msgLine = String(data: msgData, encoding: .utf8) {
+                lines.append(msgLine)
+            }
+        }
+        let content = lines.joined(separator: "\n") + "\n"
+        try? content.write(to: fileURL, atomically: true, encoding: .utf8)
     }
 
     func stopGenerating() {

@@ -25,9 +25,7 @@ struct StreamingIndicatorView: View {
                 if !text.isEmpty {
                     MarkdownTextView(text: text, chatStyle: chatStyle)
                         .font(.system(size: chatStyle?.fontSize ?? 13))
-                        .padding(10)
-                        .background(Color(.controlBackgroundColor))
-                        .cornerRadius(12)
+                        .padding(12)
                 } else {
                     HStack(spacing: 4) {
                         ForEach(0..<3) { i in

@@ -5,6 +5,9 @@ struct WorldInfoEditorView: View {
     @Binding var book: WorldInfo
     let viewModel: WorldInfoViewModel
 
+    @State private var showDeleteEntryConfirmation = false
+    @State private var pendingDeleteEntryUID: Int?
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -32,6 +35,19 @@ struct WorldInfoEditorView: View {
                 .padding()
             }
         }
+        .alert("Delete Entry", isPresented: $showDeleteEntryConfirmation) {
+            Button("Cancel", role: .cancel) {
+                pendingDeleteEntryUID = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let uid = pendingDeleteEntryUID {
+                    viewModel.removeEntry(uid: uid, from: &book)
+                }
+                pendingDeleteEntryUID = nil
+            }
+        } message: {
+            Text("Are you sure you want to delete this entry? This cannot be undone.")
+        }
     }
 
     @ViewBuilder
@@ -40,7 +56,7 @@ struct WorldInfoEditorView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Toggle("Enabled", isOn: Binding(
-                    get: { book.entries[key]?.enabled ?? true },
+                    get: { book.entries[key]?.enabled ?? false },
                     set: { book.entries[key]?.enabled = $0 }
                 ))
                 .toggleStyle(.checkbox)
@@ -58,20 +74,13 @@ struct WorldInfoEditorView: View {
                     .foregroundColor(.secondary)
 
                 Button(role: .destructive) {
-                    viewModel.removeEntry(uid: entry.uid, from: &book)
+                    pendingDeleteEntryUID = entry.uid
+                    showDeleteEntryConfirmation = true
                 } label: {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
             }
-
-            // Comment/Name
-            TextField("Comment/Name", text: Binding(
-                get: { book.entries[key]?.comment ?? "" },
-                set: { book.entries[key]?.comment = $0 }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .font(.system(size: 12))
 
             // Keywords
             TextField("Keywords (comma-separated)", text: Binding(
@@ -91,7 +100,7 @@ struct WorldInfoEditorView: View {
                 set: { book.entries[key]?.content = $0 }
             ))
             .font(.system(size: 12))
-            .frame(minHeight: 60)
+            .frame(minHeight: 120)
             .scrollContentBackground(.hidden)
             .padding(4)
             .background(Color(.controlBackgroundColor))
@@ -103,7 +112,7 @@ struct WorldInfoEditorView: View {
                 set: { book.entries[key]?.position = $0 }
             )) {
                 ForEach(EntryPosition.allCases, id: \.self) { pos in
-                    Text(pos.rawValue).tag(pos)
+                    Text(pos.displayName).tag(pos)
                 }
             }
             .pickerStyle(.segmented)

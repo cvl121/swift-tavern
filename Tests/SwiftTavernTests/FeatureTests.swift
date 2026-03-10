@@ -106,20 +106,20 @@ final class AdvancedModeTests: XCTestCase {
         XCTAssertFalse(appState.settings.advancedMode, "Advanced mode should default to off")
     }
 
-    func testGenerationTabHiddenWhenAdvancedModeOff() {
+    func testPresetsTabHiddenWhenAdvancedModeOff() {
         let vm = SettingsViewModel(appState: appState)
         vm.advancedMode = false
 
         let sections = vm.visibleSections
-        XCTAssertFalse(sections.contains(.generation), "Generation section should be hidden when advanced mode is off")
+        XCTAssertFalse(sections.contains(.presets), "Presets section should be hidden when advanced mode is off")
     }
 
-    func testGenerationTabVisibleWhenAdvancedModeOn() {
+    func testPresetsTabVisibleWhenAdvancedModeOn() {
         let vm = SettingsViewModel(appState: appState)
         vm.advancedMode = true
 
         let sections = vm.visibleSections
-        XCTAssertTrue(sections.contains(.generation), "Generation section should be visible when advanced mode is on")
+        XCTAssertTrue(sections.contains(.presets), "Presets section should be visible when advanced mode is on")
     }
 
     func testAdvancedModePersistsThroughSave() {
@@ -138,9 +138,9 @@ final class AdvancedModeTests: XCTestCase {
         XCTAssertTrue(sections.contains(.api), "API section should always be visible")
         XCTAssertTrue(sections.contains(.general), "General section should always be visible")
         XCTAssertTrue(sections.contains(.chat), "Chat section should always be visible")
-        XCTAssertFalse(sections.contains(.personas), "Personas section should not be in settings (available in sidebar)")
         XCTAssertTrue(sections.contains(.experimental), "Experimental section should always be visible")
         XCTAssertTrue(sections.contains(.data), "Data section should always be visible")
+        XCTAssertTrue(sections.contains(.reset), "Reset section should always be visible")
     }
 }
 
@@ -241,10 +241,10 @@ final class SettingsSidebarTests: XCTestCase {
             .api: "network",
             .general: "gearshape",
             .chat: "bubble.left.and.bubble.right",
-            .generation: "slider.horizontal.3",
-            .personas: "person.circle",
+            .presets: "slider.horizontal.3",
             .experimental: "flask",
-            .data: "square.and.arrow.down.on.square"
+            .data: "square.and.arrow.down.on.square",
+            .reset: "arrow.counterclockwise"
         ]
 
         for (section, expectedIcon) in expectedIcons {
@@ -374,13 +374,9 @@ final class CharacterListAndEditorTests: XCTestCase {
         let vm = CharacterListViewModel(appState: appState)
         let entry = appState.characters.first { $0.filename == filename }!
 
-        XCTAssertFalse(vm.showingEditor)
-        XCTAssertNil(vm.editingEntry)
-
         vm.editCharacter(entry)
 
-        XCTAssertTrue(vm.showingEditor, "Editor should be shown after editCharacter")
-        XCTAssertEqual(vm.editingEntry?.filename, filename, "Editing entry should match")
+        XCTAssertEqual(appState.selectedSidebarItem, .characterInfo(filename), "Should navigate to character info view")
     }
 
     func testCharacterEditorPopulatesFieldsFromExisting() throws {
@@ -420,5 +416,139 @@ final class CharacterListAndEditorTests: XCTestCase {
         let settings = SidebarItem.settings
         XCTAssertEqual(settings, SidebarItem.settings)
         // The labeled buttons are a UI concern verified by building successfully
+    }
+}
+
+// MARK: - SillyTavern Import Tests
+
+final class SillyTavernImportTests: XCTestCase {
+    private var tempDir: URL!
+    private var appState: AppState!
+
+    override func setUp() {
+        super.setUp()
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        appState = AppState(rootDirectory: tempDir)
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tempDir)
+        super.tearDown()
+    }
+
+    func testWorldInfoDecodingNormalizesCommentToContent() throws {
+        // SillyTavern stores lore text in "comment", leaves "content" empty
+        let json = """
+        {
+            "entries": {
+                "0": {
+                    "uid": 0,
+                    "key": ["magic"],
+                    "keysecondary": [],
+                    "comment": "Lore text about magic systems",
+                    "content": "",
+                    "constant": false,
+                    "selective": false,
+                    "order": 50,
+                    "position": 0,
+                    "disable": false,
+                    "caseSensitive": null
+                }
+            }
+        }
+        """
+        // Write to a temp file and load via WorldInfoStorageService
+        let worldFile = tempDir.appendingPathComponent("TestWorld.json")
+        try json.data(using: .utf8)!.write(to: worldFile)
+
+        let worldInfo = try appState.worldInfoStorage.loadWorldInfo(from: worldFile)
+        XCTAssertEqual(worldInfo.name, "TestWorld")
+        XCTAssertEqual(worldInfo.entries.count, 1)
+
+        let entry = worldInfo.entries["0"]!
+        XCTAssertEqual(entry.content, "Lore text about magic systems",
+                       "content should be populated from comment when content is empty")
+        XCTAssertEqual(entry.comment, "Lore text about magic systems")
+        XCTAssertEqual(entry.keys, ["magic"])
+        XCTAssertTrue(entry.enabled, "enabled should be true (disable=false)")
+        XCTAssertEqual(entry.insertionOrder, 50, "insertionOrder should come from 'order'")
+    }
+
+    func testWorldInfoDecodingPreservesExistingContent() throws {
+        // When content is already populated, don't overwrite
+        let json = """
+        {
+            "entries": {
+                "0": {
+                    "uid": 0,
+                    "key": [],
+                    "comment": "Entry title",
+                    "content": "Actual lore content here",
+                    "constant": false,
+                    "order": 100,
+                    "position": 0,
+                    "disable": false
+                }
+            }
+        }
+        """
+        let worldFile = tempDir.appendingPathComponent("TestWorld2.json")
+        try json.data(using: .utf8)!.write(to: worldFile)
+
+        let worldInfo = try appState.worldInfoStorage.loadWorldInfo(from: worldFile)
+        let entry = worldInfo.entries["0"]!
+        XCTAssertEqual(entry.content, "Actual lore content here",
+                       "existing content should be preserved")
+        XCTAssertEqual(entry.comment, "Entry title")
+    }
+
+    func testImportFromSillyTavernLauncherDirectory() throws {
+        // Simulate a SillyTavern-Launcher structure: root/SillyTavern/data/default-user/
+        let launcherDir = tempDir.appendingPathComponent("launcher")
+        let stDir = launcherDir.appendingPathComponent("SillyTavern")
+        let dataDir = stDir.appendingPathComponent("data/default-user")
+        let charsDir = dataDir.appendingPathComponent("characters")
+        let worldsDir = dataDir.appendingPathComponent("worlds")
+
+        let fm = FileManager.default
+        try fm.createDirectory(at: charsDir, withIntermediateDirectories: true)
+        try fm.createDirectory(at: worldsDir, withIntermediateDirectories: true)
+
+        // Create a minimal character JSON
+        let charJson = """
+        {"spec":"chara_card_v2","spec_version":"2.0","data":{"name":"TestNarrator","description":"A test narrator","personality":"","scenario":"","first_mes":"","mes_example":"","creator_notes":"","system_prompt":"","post_history_instructions":"","alternate_greetings":[],"tags":[],"creator":"","character_version":"","extensions":{}}}
+        """
+        try charJson.data(using: .utf8)!.write(to: charsDir.appendingPathComponent("TestNarrator.json"))
+
+        // Create a world info file
+        let worldJson = """
+        {"entries":{"0":{"uid":0,"key":["test"],"keysecondary":[],"comment":"World lore content","content":"","constant":false,"selective":false,"order":100,"position":0,"disable":false,"caseSensitive":null}}}
+        """
+        try worldJson.data(using: .utf8)!.write(to: worldsDir.appendingPathComponent("TestWorld.json"))
+
+        // Also create package.json so the launcher detection works
+        try "{}".data(using: .utf8)!.write(to: stDir.appendingPathComponent("package.json"))
+
+        // Run import pointing to the launcher directory (not the inner SillyTavern dir)
+        let vm = SettingsViewModel(appState: appState)
+        vm.sillyTavernPath = launcherDir.path
+        vm.importFromPath()
+
+        // Verify characters were imported
+        XCTAssertTrue(appState.characters.count >= 1, "Should have imported at least 1 character, got \(appState.characters.count)")
+        let narratorExists = appState.characters.contains { $0.card.data.name == "TestNarrator" }
+        XCTAssertTrue(narratorExists, "TestNarrator character should be imported")
+
+        // Verify worlds were imported
+        XCTAssertTrue(appState.worldInfoBooks.count >= 1, "Should have imported at least 1 world, got \(appState.worldInfoBooks.count)")
+        let testWorld = appState.worldInfoBooks.first { $0.name == "TestWorld" }
+        XCTAssertNotNil(testWorld, "TestWorld should be imported")
+        if let world = testWorld {
+            let entry = world.entries["0"]
+            XCTAssertNotNil(entry)
+            XCTAssertEqual(entry?.content, "World lore content",
+                           "World entry content should be populated from comment")
+        }
     }
 }

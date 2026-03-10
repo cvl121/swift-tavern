@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// ViewModel for user persona management
 @Observable
@@ -91,6 +92,23 @@ final class PersonaViewModel {
         guard let appState else { return }
         appState.settings.userName = persona.name
         appState.saveSettings()
+    }
+
+    func exportAllPersonas() {
+        guard let appState else { return }
+        let panel = NSSavePanel()
+        panel.title = "Export All Personas"
+        panel.nameFieldStringValue = "personas.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted]
+            let data = try encoder.encode(appState.personas)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            errorMessage = "Export failed: \(error.localizedDescription)"
+        }
     }
 
     func importPersonas(from url: URL) {
