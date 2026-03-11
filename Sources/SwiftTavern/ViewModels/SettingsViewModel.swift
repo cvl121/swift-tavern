@@ -64,6 +64,11 @@ final class SettingsViewModel {
     var chatDisplayLimit: Int
     var chatMessageLengthLimit: Int
     var uiScale: Double
+    var regexScriptsEnabled: Bool
+    var regexRules: [RegexRule]
+    var chatBranchingEnabled: Bool
+    var messageDragReorderEnabled: Bool
+    var keyboardMessageNavEnabled: Bool
 
     // Data import/export state
     var showingDataImporter = false
@@ -102,6 +107,11 @@ final class SettingsViewModel {
         self.chatDisplayLimit = appState.settings.chatDisplayLimit
         self.chatMessageLengthLimit = appState.settings.chatMessageLengthLimit
         self.uiScale = appState.settings.uiScale
+        self.regexScriptsEnabled = appState.settings.regexScriptsEnabled
+        self.regexRules = appState.settings.regexRules
+        self.chatBranchingEnabled = appState.settings.chatBranchingEnabled
+        self.messageDragReorderEnabled = appState.settings.messageDragReorderEnabled
+        self.keyboardMessageNavEnabled = appState.settings.keyboardMessageNavEnabled
 
         let configData = appState.settings.apiConfigurations[appState.settings.activeAPI.rawValue]
             ?? .defaultConfig(for: appState.settings.activeAPI)
@@ -255,6 +265,11 @@ final class SettingsViewModel {
         appState.settings.chatDisplayLimit = chatDisplayLimit
         appState.settings.chatMessageLengthLimit = chatMessageLengthLimit
         appState.settings.uiScale = uiScale
+        appState.settings.regexScriptsEnabled = regexScriptsEnabled
+        appState.settings.regexRules = regexRules
+        appState.settings.chatBranchingEnabled = chatBranchingEnabled
+        appState.settings.messageDragReorderEnabled = messageDragReorderEnabled
+        appState.settings.keyboardMessageNavEnabled = keyboardMessageNavEnabled
 
         let configData = APIConfigurationData(
             baseURL: baseURL.isEmpty ? nil : baseURL,

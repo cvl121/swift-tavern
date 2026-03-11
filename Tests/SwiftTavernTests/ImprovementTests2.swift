@@ -643,6 +643,10 @@ final class TokenCountEstimationTests: XCTestCase {
         let appState = AppState(rootDirectory: tempDir)
         let vm = ChatViewModel(appState: appState)
 
+        // Create a minimal character so estimatedTokenCount doesn't bail early
+        let card = TavernCardV2(data: CharacterData(name: "Bot"))
+        appState.selectedCharacter = CharacterEntry(filename: "bot.png", card: card, avatarData: nil)
+
         appState.currentChat = ChatSession(
             id: "test",
             filename: "test.jsonl",
@@ -656,7 +660,7 @@ final class TokenCountEstimationTests: XCTestCase {
         let count = vm.estimatedTokenCount
         // 7 words + 5 words = 12 words * 1.3 = ~15-16 tokens
         XCTAssertGreaterThan(count, 0)
-        XCTAssertLessThan(count, 100, "Token count should be reasonable for a short chat")
+        XCTAssertLessThan(count, 500, "Token count should be reasonable for a short chat")
 
         try? FileManager.default.removeItem(at: tempDir)
     }

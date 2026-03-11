@@ -102,8 +102,13 @@ final class ChatViewModel {
     func sendMessage() {
         guard let appState, !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
-        let messageText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        var messageText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         inputText = ""
+
+        // Apply regex input rules if enabled
+        if appState.settings.regexScriptsEnabled {
+            messageText = RegexScriptEngine.applyRules(messageText, rules: appState.settings.regexRules, target: .input)
+        }
 
         let userMessage = ChatMessage(name: userName, isUser: true, mes: messageText)
         appState.currentChat?.messages.append(userMessage)
@@ -136,6 +141,11 @@ final class ChatViewModel {
         isGenerating = true
         streamingText = ""
         errorMessage = nil
+
+        // Close search to avoid concurrent access freezes
+        showingSearch = false
+        showingInChatSearch = false
+        inChatSearchResults = []
 
         let service = appState.currentLLMService()
         let chatHistory = appState.currentChat?.messages ?? []
@@ -229,15 +239,21 @@ final class ChatViewModel {
             return
         }
 
+        // Apply regex output rules if enabled
+        var responseText = streamingText
+        if appState.settings.regexScriptsEnabled {
+            responseText = RegexScriptEngine.applyRules(responseText, rules: appState.settings.regexRules, target: .output)
+        }
+
         var assistantMessage = ChatMessage(
             name: characterName,
             isUser: false,
-            mes: streamingText
+            mes: responseText
         )
 
         // If we have pending swipes from regeneration, attach them
         if var swipes = pendingSwipes {
-            swipes.append(streamingText)
+            swipes.append(responseText)
             assistantMessage.swipes = swipes
             assistantMessage.swipeId = swipes.count - 1
             pendingSwipes = nil
@@ -285,16 +301,39 @@ final class ChatViewModel {
 
     // MARK: - Stop
 
+    var showStopOptions = false
+    var pendingPartialText = ""
+
     func stopGenerating() {
         generationTask?.cancel()
         generationTask = nil
 
-        if !streamingText.isEmpty, let appState, let character = appState.selectedCharacter {
-            finalizeResponse(characterName: character.card.data.name)
+        if !streamingText.isEmpty {
+            pendingPartialText = streamingText
+            streamingText = ""
+            isGenerating = false
+            showStopOptions = true
         } else {
             streamingText = ""
             isGenerating = false
         }
+    }
+
+    func keepPartialResponse() {
+        guard let appState, let character = appState.selectedCharacter else {
+            pendingPartialText = ""
+            showStopOptions = false
+            return
+        }
+        streamingText = pendingPartialText
+        finalizeResponse(characterName: character.card.data.name)
+        pendingPartialText = ""
+        showStopOptions = false
+    }
+
+    func discardPartialResponse() {
+        pendingPartialText = ""
+        showStopOptions = false
     }
 
     // MARK: - Undo
@@ -406,7 +445,8 @@ final class ChatViewModel {
 
     func performSearch() {
         guard let appState, let character = appState.selectedCharacter,
-              !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty else {
+              !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty,
+              !isGenerating else {
             searchResults = []
             hasSearched = false
             return
@@ -423,16 +463,18 @@ final class ChatViewModel {
 
     func searchInCurrentChat() {
         let query = inChatSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else {
+        guard !query.isEmpty, !isGenerating else {
             inChatSearchResults = []
             currentSearchResultIndex = 0
             return
         }
 
-        inChatSearchResults = messages.enumerated().compactMap { index, message in
+        // Snapshot messages to avoid issues with concurrent mutation
+        let snapshot = messages
+        inChatSearchResults = snapshot.enumerated().compactMap { index, message in
             message.mes.localizedCaseInsensitiveContains(query) ? index : nil
         }
-        currentSearchResultIndex = inChatSearchResults.isEmpty ? 0 : 0
+        currentSearchResultIndex = 0
     }
 
     func nextSearchResult() {
@@ -651,10 +693,63 @@ final class ChatViewModel {
     // MARK: - Token Count Estimation
 
     var estimatedTokenCount: Int {
-        let allText = messages.map(\.mes).joined(separator: " ")
-        guard !allText.isEmpty else { return 0 }
-        let wordCount = allText.split(whereSeparator: { $0.isWhitespace }).count
-        return Int(Double(wordCount) * 1.3)
+        guard let appState, let character = appState.selectedCharacter else { return 0 }
+        let chatHistory = appState.currentChat?.messages ?? []
+        guard !chatHistory.isEmpty else { return 0 }
+        let worldInfoEntries = resolveWorldInfoEntries(for: character, appState: appState)
+        let persona = appState.personas.first { $0.name == appState.settings.userName }
+        let llmMessages = PromptBuilder.buildMessages(
+            character: character.card.data,
+            chatHistory: chatHistory,
+            userName: appState.settings.userName,
+            systemPrompt: appState.settings.defaultSystemPrompt,
+            worldInfoEntries: worldInfoEntries,
+            persona: persona
+        )
+        return TokenEstimator.estimateMessages(llmMessages)
+    }
+
+    // MARK: - Keyboard Navigation
+
+    var focusedMessageIndex: Int?
+
+    func focusNextMessage() {
+        let count = messages.count
+        guard count > 0 else { return }
+        if let current = focusedMessageIndex {
+            focusedMessageIndex = min(current + 1, count - 1)
+        } else {
+            focusedMessageIndex = 0
+        }
+    }
+
+    func focusPreviousMessage() {
+        let count = messages.count
+        guard count > 0 else { return }
+        if let current = focusedMessageIndex {
+            focusedMessageIndex = max(current - 1, 0)
+        } else {
+            focusedMessageIndex = count - 1
+        }
+    }
+
+    func clearFocus() {
+        focusedMessageIndex = nil
+    }
+
+    // MARK: - Message Reordering
+
+    func moveMessage(from sourceIndex: Int, to destinationIndex: Int) {
+        guard let appState, appState.currentChat != nil else { return }
+        let count = appState.currentChat!.messages.count
+        guard sourceIndex >= 0, sourceIndex < count,
+              destinationIndex >= 0, destinationIndex < count,
+              sourceIndex != destinationIndex else { return }
+
+        pushUndo("Reorder message")
+        let message = appState.currentChat!.messages.remove(at: sourceIndex)
+        appState.currentChat!.messages.insert(message, at: destinationIndex)
+        rewriteCurrentChat()
     }
 
     // MARK: - Export as Markdown

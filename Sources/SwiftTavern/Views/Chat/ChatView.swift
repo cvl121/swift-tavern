@@ -8,6 +8,7 @@ struct ChatView: View {
 
     @State private var showingChatStyleEditor = false
     @State private var autoScrollEnabled = true
+    @State private var lastStreamScrollTime: Date = .distantPast
 
     /// Load avatar data for the active user persona
     private var userAvatarData: Data? {
@@ -113,10 +114,17 @@ struct ChatView: View {
                             .padding()
                         }
 
-                        // Invisible anchor at the very bottom
+                        // Invisible anchor at the very bottom — also detects scroll position
                         Color.clear
                             .frame(height: 1)
                             .id("bottom")
+                            .onAppear { autoScrollEnabled = true }
+                            .onDisappear {
+                                // User scrolled up away from bottom — stop fighting their scroll
+                                if chatVM.isGenerating {
+                                    autoScrollEnabled = false
+                                }
+                            }
                     }
                     .padding(.vertical, 8)
                 }
@@ -129,12 +137,18 @@ struct ChatView: View {
                     }
                 }
                 .onChange(of: chatVM.streamingText) {
-                    if autoScrollEnabled {
+                    guard autoScrollEnabled else { return }
+                    // Throttle scroll-to-bottom during streaming to avoid layout thrashing
+                    let now = Date()
+                    if now.timeIntervalSince(lastStreamScrollTime) > 0.15 {
+                        lastStreamScrollTime = now
                         scrollToBottom(proxy: proxy, animated: false)
                     }
                 }
                 .onChange(of: chatVM.isGenerating) { _, isGenerating in
-                    if !isGenerating && autoScrollEnabled {
+                    if !isGenerating {
+                        // Re-enable auto-scroll when generation completes
+                        autoScrollEnabled = true
                         scrollToBottom(proxy: proxy, animated: true)
                     }
                 }
@@ -151,6 +165,25 @@ struct ChatView: View {
             Divider()
 
             // Input area
+            // Stop options (keep/discard partial response)
+            if chatVM.showStopOptions {
+                HStack(spacing: 12) {
+                    Text("Generation stopped. Keep partial response?")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Button("Discard") { chatVM.discardPartialResponse() }
+                        .controlSize(.small)
+                        .buttonStyle(.bordered)
+                    Button("Keep") { chatVM.keepPartialResponse() }
+                        .controlSize(.small)
+                        .buttonStyle(.borderedProminent)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color(.controlBackgroundColor))
+            }
+
             ChatInputView(
                 text: $chatVM.inputText,
                 inputHeight: Binding(
@@ -167,6 +200,18 @@ struct ChatView: View {
                 onSend: { chatVM.sendMessage() },
                 onStop: { chatVM.stopGenerating() }
             )
+        }
+        // Auto-save indicator
+        .overlay(alignment: .bottomTrailing) {
+            if appState.isSaving {
+                Text("Saving...")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .padding(4)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
+                    .padding(8)
+                    .transition(.opacity)
+            }
         }
         // Keyboard shortcuts
         .onKeyPress(.escape) {
@@ -195,6 +240,16 @@ struct ChatView: View {
                 return .handled
             }
             return .ignored
+        }
+        .onKeyPress(.upArrow) {
+            guard appState.settings.keyboardMessageNavEnabled else { return .ignored }
+            chatVM.focusPreviousMessage()
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            guard appState.settings.keyboardMessageNavEnabled else { return .ignored }
+            chatVM.focusNextMessage()
+            return .handled
         }
         .sheet(isPresented: $chatVM.showingChatPicker) {
             ChatHistoryPickerView(
@@ -363,6 +418,7 @@ struct ChatView: View {
             onToggleBookmark: { chatVM.toggleBookmark(at: index) },
             onFork: { chatVM.forkFromMessage(at: index) },
             chatStyle: activeChatStyle,
+            isFocused: chatVM.focusedMessageIndex == index,
             swipeInfo: swipe
         )
     }
@@ -371,6 +427,40 @@ struct ChatView: View {
 
     private var showLabels: Bool {
         appState.settings.showChatButtonLabels
+    }
+
+    @ViewBuilder
+    private var contextUsageView: some View {
+        let tokens = chatVM.estimatedTokenCount
+        let model = appState.currentAPIConfiguration()?.model ?? ""
+        let contextLimit = ModelContextLimits.contextWindow(for: model)
+
+        if let limit = contextLimit {
+            let ratio = min(Double(tokens) / Double(limit), 1.0)
+            let color: Color = ratio > 0.9 ? .red : ratio > 0.7 ? .orange : .accentColor
+
+            HStack(spacing: 4) {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color(.separatorColor).opacity(0.3))
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(color.opacity(0.6))
+                            .frame(width: geo.size.width * ratio)
+                    }
+                }
+                .frame(width: 40, height: 6)
+
+                Text("~\(ModelContextLimits.formatTokenCount(tokens))/\(ModelContextLimits.formatTokenCount(limit))")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .help("Estimated token usage: ~\(tokens) / \(limit) context window")
+        } else {
+            Text("~\(tokens) tokens")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+        }
     }
 
     @ViewBuilder
@@ -406,9 +496,7 @@ struct ChatView: View {
             }
 
             if !chatVM.messages.isEmpty {
-                Text("~\(chatVM.estimatedTokenCount) tokens")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                contextUsageView
             }
 
             Spacer()
@@ -449,6 +537,7 @@ struct ChatView: View {
                     chatHeaderLabel("Search", icon: "magnifyingglass")
                         .foregroundColor((chatVM.showingSearch || chatVM.showingInChatSearch) ? .accentColor : .primary)
                 }
+                .disabled(chatVM.isGenerating)
                 .help("Search Messages (Cmd+F)")
                 .keyboardShortcut("f", modifiers: .command)
 

@@ -824,9 +824,128 @@ struct SettingsView: View {
                             .padding(.top, 4)
                         }
                     }
+
+                    Divider()
+
+                    // Regex Scripts
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Regex Scripts", isOn: $viewModel.regexScriptsEnabled)
+                            .onChange(of: viewModel.regexScriptsEnabled) { _, _ in
+                                Task { @MainActor in viewModel.saveConfiguration() }
+                            }
+                        Text("Apply regex find-and-replace rules to input or output text. Useful for formatting, censoring, or transforming messages.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 20)
+
+                        if viewModel.regexScriptsEnabled {
+                            regexRulesEditor
+                                .padding(.leading, 20)
+                                .padding(.top, 4)
+                        }
+                    }
+
+                    Divider()
+
+                    // Chat Branching
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Chat Branching", isOn: $viewModel.chatBranchingEnabled)
+                            .onChange(of: viewModel.chatBranchingEnabled) { _, _ in
+                                Task { @MainActor in viewModel.saveConfiguration() }
+                            }
+                        Text("Fork conversations at any point to explore different directions. Branches are accessible via the context menu on each message.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 20)
+                    }
+
+                    Divider()
+
+                    // Message Drag Reorder
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Message Drag Reorder", isOn: $viewModel.messageDragReorderEnabled)
+                            .onChange(of: viewModel.messageDragReorderEnabled) { _, _ in
+                                Task { @MainActor in viewModel.saveConfiguration() }
+                            }
+                        Text("Drag and drop messages to reorder them within a conversation.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 20)
+                    }
+
+                    Divider()
+
+                    // Keyboard Message Navigation
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Keyboard Message Navigation", isOn: $viewModel.keyboardMessageNavEnabled)
+                            .onChange(of: viewModel.keyboardMessageNavEnabled) { _, _ in
+                                Task { @MainActor in viewModel.saveConfiguration() }
+                            }
+                        Text("Use arrow keys to navigate between messages and quickly select them for editing or other actions.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 20)
+                    }
                 }
                 .padding(.leading, 4)
             }
+        }
+    }
+
+    // MARK: - Regex Rules Editor
+
+    private var regexRulesEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(viewModel.regexRules.indices, id: \.self) { idx in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Toggle("", isOn: $viewModel.regexRules[idx].enabled)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
+                        TextField("Rule name", text: $viewModel.regexRules[idx].name)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 150)
+                        Picker("", selection: $viewModel.regexRules[idx].appliesTo) {
+                            Text("Input").tag(RegexRule.RuleTarget.input)
+                            Text("Output").tag(RegexRule.RuleTarget.output)
+                            Text("Both").tag(RegexRule.RuleTarget.both)
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        Spacer()
+                        Button(action: {
+                            viewModel.regexRules.remove(at: idx)
+                            viewModel.saveConfiguration()
+                        }) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 11))
+                                .foregroundColor(.red)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    HStack(spacing: 4) {
+                        TextField("Pattern (regex)", text: $viewModel.regexRules[idx].pattern)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                        TextField("Replacement", text: $viewModel.regexRules[idx].replacement)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                    }
+                }
+                .padding(8)
+                .background(Color(.controlBackgroundColor))
+                .cornerRadius(6)
+            }
+
+            Button(action: {
+                viewModel.regexRules.append(RegexRule(order: viewModel.regexRules.count))
+                viewModel.saveConfiguration()
+            }) {
+                Label("Add Rule", systemImage: "plus")
+                    .font(.system(size: 12))
+            }
+            .controlSize(.small)
         }
     }
 

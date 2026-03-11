@@ -52,14 +52,15 @@ enum PromptBuilder {
 
             for entry in bookEntries.sorted(by: { $0.insertionOrder < $1.insertionOrder }) {
                 guard entry.enabled else { continue }
+                let entryContent = entry.content.replacingTemplateVars(charName: character.name, userName: userName)
                 if entry.constant {
-                    systemContent += "\n\n\(entry.content)"
+                    systemContent += "\n\n\(entryContent)"
                 } else if entry.keys.contains(where: { key in
                     let searchText = (entry.caseSensitive ?? false) ? recentTextForBook : recentTextForBook.lowercased()
                     let searchKey = (entry.caseSensitive ?? false) ? key : key.lowercased()
                     return searchText.contains(searchKey)
                 }) {
-                    systemContent += "\n\n\(entry.content)"
+                    systemContent += "\n\n\(entryContent)"
                 }
             }
         }
@@ -67,7 +68,8 @@ enum PromptBuilder {
         // 7. World Info - constant entries
         let constantEntries = worldInfoEntries.filter { $0.constant && $0.enabled }
         for entry in constantEntries.sorted(by: { $0.insertionOrder < $1.insertionOrder }) {
-            systemContent += "\n\n\(entry.content)"
+            let entryContent = entry.content.replacingTemplateVars(charName: character.name, userName: userName)
+            systemContent += "\n\n\(entryContent)"
         }
 
         // 8. World Info - keyword-triggered entries
@@ -80,7 +82,8 @@ enum PromptBuilder {
             }
         }
         for entry in triggeredEntries.sorted(by: { $0.insertionOrder < $1.insertionOrder }) {
-            systemContent += "\n\n\(entry.content)"
+            let entryContent = entry.content.replacingTemplateVars(charName: character.name, userName: userName)
+            systemContent += "\n\n\(entryContent)"
         }
 
         messages.append(LLMMessage(role: .system, content: systemContent))
@@ -97,11 +100,13 @@ enum PromptBuilder {
         let postInstructions = character.postHistoryInstructions
             .replacingTemplateVars(charName: character.name, userName: userName)
 
-        // 11. Chat history
-        for message in chatHistory {
+        // 11. Chat history (skip system messages — they are metadata, not conversation)
+        for message in chatHistory where !message.isSystem {
             let role: MessageRole = message.isUser ? .user : .assistant
             let content = message.mes.replacingTemplateVars(charName: character.name, userName: userName)
-            messages.append(LLMMessage(role: role, content: content))
+            if !content.isEmpty {
+                messages.append(LLMMessage(role: role, content: content))
+            }
         }
 
         // 12. Post-history instructions (appended as system message after history)

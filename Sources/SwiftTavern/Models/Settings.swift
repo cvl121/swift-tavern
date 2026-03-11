@@ -47,6 +47,12 @@ struct AppSettings: Codable {
     var chatInputHeight: Double
     /// App-wide UI font size multiplier (default 1.0 = 100%)
     var uiScale: Double
+    // Experimental feature toggles
+    var regexScriptsEnabled: Bool
+    var regexRules: [RegexRule]
+    var chatBranchingEnabled: Bool
+    var messageDragReorderEnabled: Bool
+    var keyboardMessageNavEnabled: Bool
 
     enum CodingKeys: String, CodingKey {
         case activeAPI = "active_api"
@@ -76,6 +82,11 @@ struct AppSettings: Codable {
         case sidebarVisible = "sidebar_visible"
         case chatInputHeight = "chat_input_height"
         case uiScale = "ui_scale"
+        case regexScriptsEnabled = "regex_scripts_enabled"
+        case regexRules = "regex_rules"
+        case chatBranchingEnabled = "chat_branching_enabled"
+        case messageDragReorderEnabled = "message_drag_reorder_enabled"
+        case keyboardMessageNavEnabled = "keyboard_message_nav_enabled"
     }
 
     init(from decoder: Decoder) throws {
@@ -107,6 +118,11 @@ struct AppSettings: Codable {
         sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
         chatInputHeight = try container.decodeIfPresent(Double.self, forKey: .chatInputHeight) ?? 32
         uiScale = try container.decodeIfPresent(Double.self, forKey: .uiScale) ?? 1.0
+        regexScriptsEnabled = try container.decodeIfPresent(Bool.self, forKey: .regexScriptsEnabled) ?? false
+        regexRules = try container.decodeIfPresent([RegexRule].self, forKey: .regexRules) ?? []
+        chatBranchingEnabled = try container.decodeIfPresent(Bool.self, forKey: .chatBranchingEnabled) ?? false
+        messageDragReorderEnabled = try container.decodeIfPresent(Bool.self, forKey: .messageDragReorderEnabled) ?? false
+        keyboardMessageNavEnabled = try container.decodeIfPresent(Bool.self, forKey: .keyboardMessageNavEnabled) ?? false
     }
 
     init(
@@ -125,7 +141,12 @@ struct AppSettings: Codable {
         sidebarWidth: Double = 250,
         sidebarVisible: Bool = true,
         chatInputHeight: Double = 32,
-        uiScale: Double = 1.0
+        uiScale: Double = 1.0,
+        regexScriptsEnabled: Bool = false,
+        regexRules: [RegexRule] = [],
+        chatBranchingEnabled: Bool = false,
+        messageDragReorderEnabled: Bool = false,
+        keyboardMessageNavEnabled: Bool = false
     ) {
         self.activeAPI = activeAPI
         self.activeModel = activeModel
@@ -154,6 +175,11 @@ struct AppSettings: Codable {
         self.sidebarVisible = sidebarVisible
         self.chatInputHeight = chatInputHeight
         self.uiScale = uiScale
+        self.regexScriptsEnabled = regexScriptsEnabled
+        self.regexRules = regexRules
+        self.chatBranchingEnabled = chatBranchingEnabled
+        self.messageDragReorderEnabled = messageDragReorderEnabled
+        self.keyboardMessageNavEnabled = keyboardMessageNavEnabled
     }
 
     static let `default` = AppSettings(

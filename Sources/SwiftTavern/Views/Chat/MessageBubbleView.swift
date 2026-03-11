@@ -18,6 +18,8 @@ struct MessageBubbleView: View {
     var onFork: (() -> Void)?
     var chatStyle: ChatStyle?
 
+    var isFocused: Bool = false
+
     // Swipe support (greeting or response swipes)
     var swipeInfo: SwipeInfo?
 
@@ -81,7 +83,7 @@ struct MessageBubbleView: View {
                 } else {
                     MarkdownTextView(text: message.mes, chatStyle: chatStyle)
                         .font(.system(size: chatStyle?.fontSize ?? 13))
-                        .textSelection(.disabled)
+                        .textSelection(.enabled)
                         .padding(12)
                         .background(
                             RoundedRectangle(cornerRadius: 10)
@@ -123,11 +125,15 @@ struct MessageBubbleView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+        .background(isFocused ? Color.accentColor.opacity(0.06) : Color.clear)
         .overlay(
             Rectangle()
                 .fill(Color(.separatorColor).opacity(0.3))
                 .frame(height: 0.5),
             alignment: .bottom
+        )
+        .overlay(
+            isFocused ? RoundedRectangle(cornerRadius: 4).stroke(Color.accentColor.opacity(0.3), lineWidth: 1).padding(2) : nil
         )
         .contentShape(Rectangle())
         .contextMenu {

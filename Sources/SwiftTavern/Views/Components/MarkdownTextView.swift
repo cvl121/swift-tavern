@@ -25,6 +25,7 @@ struct MarkdownTextView: View {
         case horizontalRule
         case blockquote(String)
         case listItem(String)
+        case codeBlock(language: String?, code: String)
         case paragraph(String)
         case empty
     }
@@ -33,6 +34,9 @@ struct MarkdownTextView: View {
         let lines = text.components(separatedBy: "\n")
         var blocks: [Block] = []
         var paragraphLines: [String] = []
+        var inCodeBlock = false
+        var codeBlockLanguage: String?
+        var codeBlockLines: [String] = []
 
         func flushParagraph() {
             if !paragraphLines.isEmpty {
@@ -43,6 +47,29 @@ struct MarkdownTextView: View {
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            // Fenced code block: ```language ... ```
+            if trimmed.hasPrefix("```") {
+                if inCodeBlock {
+                    // Close code block
+                    blocks.append(.codeBlock(language: codeBlockLanguage, code: codeBlockLines.joined(separator: "\n")))
+                    codeBlockLines.removeAll()
+                    codeBlockLanguage = nil
+                    inCodeBlock = false
+                } else {
+                    // Open code block
+                    flushParagraph()
+                    let lang = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                    codeBlockLanguage = lang.isEmpty ? nil : lang
+                    inCodeBlock = true
+                }
+                continue
+            }
+
+            if inCodeBlock {
+                codeBlockLines.append(line)
+                continue
+            }
 
             // Horizontal rule: ---, ***, ___, or -- (SillyTavern style)
             if trimmed == "---" || trimmed == "***" || trimmed == "___" || trimmed == "--" {
@@ -99,6 +126,11 @@ struct MarkdownTextView: View {
             paragraphLines.append(line)
         }
 
+        // Close unclosed code block
+        if inCodeBlock && !codeBlockLines.isEmpty {
+            blocks.append(.codeBlock(language: codeBlockLanguage, code: codeBlockLines.joined(separator: "\n")))
+        }
+
         flushParagraph()
         return blocks
     }
@@ -111,6 +143,28 @@ struct MarkdownTextView: View {
         case .heading(let level, let text):
             renderInline(text, style: style, fontSizeOverride: headingSize(level), bold: true)
                 .padding(.top, level <= 2 ? 6 : 2)
+
+        case .codeBlock(let language, let code):
+            VStack(alignment: .leading, spacing: 0) {
+                if let language, !language.isEmpty {
+                    Text(language)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.top, 6)
+                        .padding(.bottom, 2)
+                }
+                ScrollView(.horizontal, showsIndicators: true) {
+                    Text(code)
+                        .font(.system(size: max((chatStyle?.fontSize ?? 13) - 1, 10), design: .monospaced))
+                        .foregroundColor(.primary)
+                        .textSelection(.enabled)
+                        .padding(10)
+                }
+            }
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color(.textBackgroundColor).opacity(0.6)))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(.separatorColor), lineWidth: 0.5))
+            .padding(.vertical, 4)
 
         case .horizontalRule:
             Divider()

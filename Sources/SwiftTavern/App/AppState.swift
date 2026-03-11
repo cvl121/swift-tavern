@@ -36,6 +36,10 @@ final class AppState {
     // Toast notifications
     var toastMessage: String?
     var toastIsError = false
+
+    // Auto-save indicator
+    var lastSaveTime: Date?
+    var isSaving = false
     private var toastDismissTask: DispatchWorkItem?
 
     func showToast(_ message: String, isError: Bool = false) {
@@ -148,7 +152,10 @@ final class AppState {
     /// Force immediate save
     func saveSettings() {
         settingsSaveTask?.cancel()
+        isSaving = true
         try? settingsStorage.save(settings)
+        lastSaveTime = Date()
+        isSaving = false
     }
 
     /// Get the current API configuration
