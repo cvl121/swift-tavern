@@ -69,6 +69,10 @@ final class SettingsViewModel {
     var chatBranchingEnabled: Bool
     var messageDragReorderEnabled: Bool
     var keyboardMessageNavEnabled: Bool
+    var imageGenSettings: ImageGenerationSettings
+    var imageGenAPIKey: String = ""
+    var showImageGenAPIKey: Bool = false
+    var imageGenTestResult: String?
 
     // Data import/export state
     var showingDataImporter = false
@@ -112,6 +116,8 @@ final class SettingsViewModel {
         self.chatBranchingEnabled = appState.settings.chatBranchingEnabled
         self.messageDragReorderEnabled = appState.settings.messageDragReorderEnabled
         self.keyboardMessageNavEnabled = appState.settings.keyboardMessageNavEnabled
+        self.imageGenSettings = appState.settings.imageGenerationSettings
+        self.imageGenAPIKey = appState.settings.apiKeys[appState.settings.imageGenerationSettings.provider.apiKeySettingsKey] ?? ""
 
         let configData = appState.settings.apiConfigurations[appState.settings.activeAPI.rawValue]
             ?? .defaultConfig(for: appState.settings.activeAPI)
@@ -270,6 +276,8 @@ final class SettingsViewModel {
         appState.settings.chatBranchingEnabled = chatBranchingEnabled
         appState.settings.messageDragReorderEnabled = messageDragReorderEnabled
         appState.settings.keyboardMessageNavEnabled = keyboardMessageNavEnabled
+        appState.settings.imageGenerationSettings = imageGenSettings
+        appState.settings.apiKeys[imageGenSettings.provider.apiKeySettingsKey] = imageGenAPIKey
 
         let configData = APIConfigurationData(
             baseURL: baseURL.isEmpty ? nil : baseURL,
@@ -329,6 +337,53 @@ final class SettingsViewModel {
                 }
             }
         }
+    }
+
+    // MARK: - Image Generation Test
+
+    func testImageGenConnection() {
+        guard let appState else { return }
+        guard !imageGenAPIKey.isEmpty else {
+            imageGenTestResult = "Enter an API key first"
+            return
+        }
+
+        saveConfiguration()
+        imageGenTestResult = "Testing..."
+
+        Task {
+            do {
+                let service = ImageGenServiceFactory.create(for: imageGenSettings.provider)
+                let imageData = try await service.generateImage(
+                    prompt: "A simple test image: a red circle on a white background",
+                    settings: imageGenSettings,
+                    apiKey: imageGenAPIKey
+                )
+
+                await MainActor.run {
+                    imageGenTestResult = "Success! Generated \(imageData.count / 1024)KB image"
+                }
+            } catch {
+                await MainActor.run {
+                    imageGenTestResult = "Failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    /// Switch image gen provider and reload API key
+    func switchImageGenProvider(_ provider: ImageGenProvider) {
+        guard let appState else { return }
+        // Save current key
+        appState.settings.apiKeys[imageGenSettings.provider.apiKeySettingsKey] = imageGenAPIKey
+        // Switch provider
+        imageGenSettings.provider = provider
+        imageGenSettings.model = provider.defaultModels.first ?? ""
+        imageGenSettings.baseURL = nil
+        // Load new key
+        imageGenAPIKey = appState.settings.apiKeys[provider.apiKeySettingsKey] ?? ""
+        imageGenTestResult = nil
+        saveConfiguration()
     }
 
     // MARK: - Data Import

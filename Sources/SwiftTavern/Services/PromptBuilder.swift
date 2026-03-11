@@ -9,7 +9,8 @@ enum PromptBuilder {
         userName: String,
         systemPrompt: String? = nil,
         worldInfoEntries: [WorldInfoEntry] = [],
-        persona: Persona? = nil
+        persona: Persona? = nil,
+        imageInjectionPrompt: String? = nil
     ) -> [LLMMessage] {
         var messages: [LLMMessage] = []
 
@@ -112,6 +113,11 @@ enum PromptBuilder {
         // 12. Post-history instructions (appended as system message after history)
         if !postInstructions.isEmpty {
             messages.append(LLMMessage(role: .system, content: postInstructions))
+        }
+
+        // 13. Image generation injection prompt (when LLM-triggered mode is active)
+        if let imageInjectionPrompt, !imageInjectionPrompt.isEmpty {
+            messages.append(LLMMessage(role: .system, content: imageInjectionPrompt))
         }
 
         return messages

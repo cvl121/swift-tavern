@@ -184,6 +184,24 @@ final class AppState {
         LLMServiceFactory.create(for: settings.activeAPI)
     }
 
+    /// Get the image generation service for the current image gen provider
+    func imageGenService() -> ImageGenerationService {
+        ImageGenServiceFactory.create(for: settings.imageGenerationSettings.provider)
+    }
+
+    /// Get the API key for the current image gen provider
+    func imageGenAPIKey() -> String {
+        settings.apiKeys[settings.imageGenerationSettings.provider.apiKeySettingsKey] ?? ""
+    }
+
+    /// Get the directory for storing generated images for a character
+    func generatedImagesDirectory(for characterName: String) -> URL {
+        let dir = directoryManager.generatedImagesDirectory
+            .appendingPathComponent(characterName.sanitizedFilename(), isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     /// Track active character for session restoration
     func setActiveCharacter(_ entry: CharacterEntry?) {
         selectedCharacter = entry

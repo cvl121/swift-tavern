@@ -53,6 +53,7 @@ struct AppSettings: Codable {
     var chatBranchingEnabled: Bool
     var messageDragReorderEnabled: Bool
     var keyboardMessageNavEnabled: Bool
+    var imageGenerationSettings: ImageGenerationSettings
 
     enum CodingKeys: String, CodingKey {
         case activeAPI = "active_api"
@@ -87,6 +88,7 @@ struct AppSettings: Codable {
         case chatBranchingEnabled = "chat_branching_enabled"
         case messageDragReorderEnabled = "message_drag_reorder_enabled"
         case keyboardMessageNavEnabled = "keyboard_message_nav_enabled"
+        case imageGenerationSettings = "image_generation_settings"
     }
 
     init(from decoder: Decoder) throws {
@@ -123,6 +125,7 @@ struct AppSettings: Codable {
         chatBranchingEnabled = try container.decodeIfPresent(Bool.self, forKey: .chatBranchingEnabled) ?? false
         messageDragReorderEnabled = try container.decodeIfPresent(Bool.self, forKey: .messageDragReorderEnabled) ?? false
         keyboardMessageNavEnabled = try container.decodeIfPresent(Bool.self, forKey: .keyboardMessageNavEnabled) ?? false
+        imageGenerationSettings = try container.decodeIfPresent(ImageGenerationSettings.self, forKey: .imageGenerationSettings) ?? .default
     }
 
     init(
@@ -146,7 +149,8 @@ struct AppSettings: Codable {
         regexRules: [RegexRule] = [],
         chatBranchingEnabled: Bool = false,
         messageDragReorderEnabled: Bool = false,
-        keyboardMessageNavEnabled: Bool = false
+        keyboardMessageNavEnabled: Bool = false,
+        imageGenerationSettings: ImageGenerationSettings = .default
     ) {
         self.activeAPI = activeAPI
         self.activeModel = activeModel
@@ -180,6 +184,7 @@ struct AppSettings: Codable {
         self.chatBranchingEnabled = chatBranchingEnabled
         self.messageDragReorderEnabled = messageDragReorderEnabled
         self.keyboardMessageNavEnabled = keyboardMessageNavEnabled
+        self.imageGenerationSettings = imageGenerationSettings
     }
 
     static let `default` = AppSettings(

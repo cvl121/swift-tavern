@@ -15,6 +15,13 @@ struct ChatMessage: Codable, Identifiable, Equatable {
     var swipeId: Int?
     var swipes: [String]?
     var isBookmarked: Bool
+    /// Path to a generated image file (relative to generated_images directory)
+    var imageURL: String?
+    /// The prompt used to generate the image
+    var imagePrompt: String?
+
+    /// Whether this message has an associated generated image
+    var hasImage: Bool { imageURL != nil }
 
     enum CodingKeys: String, CodingKey {
         case name, mes, extra, swipes
@@ -24,6 +31,8 @@ struct ChatMessage: Codable, Identifiable, Equatable {
         case sendDate = "send_date"
         case swipeId = "swipe_id"
         case isBookmarked = "is_bookmarked"
+        case imageURL = "image_url"
+        case imagePrompt = "image_prompt"
     }
 
     init(
@@ -33,7 +42,9 @@ struct ChatMessage: Codable, Identifiable, Equatable {
         sendDate: String = "",
         mes: String,
         extra: [String: AnyCodable]? = nil,
-        isBookmarked: Bool = false
+        isBookmarked: Bool = false,
+        imageURL: String? = nil,
+        imagePrompt: String? = nil
     ) {
         self.messageId = UUID().uuidString
         self.name = name
@@ -43,6 +54,8 @@ struct ChatMessage: Codable, Identifiable, Equatable {
         self.mes = mes
         self.extra = extra
         self.isBookmarked = isBookmarked
+        self.imageURL = imageURL
+        self.imagePrompt = imagePrompt
     }
 
     init(from decoder: Decoder) throws {
@@ -58,6 +71,8 @@ struct ChatMessage: Codable, Identifiable, Equatable {
         swipeId = try container.decodeIfPresent(Int.self, forKey: .swipeId)
         swipes = try container.decodeIfPresent([String].self, forKey: .swipes)
         isBookmarked = try container.decodeIfPresent(Bool.self, forKey: .isBookmarked) ?? false
+        imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
+        imagePrompt = try container.decodeIfPresent(String.self, forKey: .imagePrompt)
     }
 
     static func currentDateString() -> String {

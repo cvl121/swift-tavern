@@ -35,6 +35,11 @@ final class ChatViewModel {
     var showingPromptPreview = false
     var promptPreviewText = ""
 
+    // Image generation
+    var isGeneratingImage = false
+    var imageGenerationError: String?
+    var messagesSinceLastImage = 0
+
     // Undo stack
     private var undoStack: [(description: String, messages: [ChatMessage])] = []
     private let maxUndoSteps = 10
@@ -158,13 +163,19 @@ final class ChatViewModel {
 
         let persona = appState.personas.first { $0.name == appState.settings.userName }
 
+        // Inject image generation prompt if LLM-triggered mode is active
+        let imgSettings = appState.settings.imageGenerationSettings
+        let imageInjection: String? = (imgSettings.enabled && imgSettings.triggerMode == .injectedPrompt)
+            ? imgSettings.injectionPrompt : nil
+
         let llmMessages = PromptBuilder.buildMessages(
             character: character.card.data,
             chatHistory: chatHistory,
             userName: appState.settings.userName,
             systemPrompt: appState.settings.defaultSystemPrompt,
             worldInfoEntries: worldInfoEntries,
-            persona: persona
+            persona: persona,
+            imageInjectionPrompt: imageInjection
         )
 
         let shouldStream = config.generationParams.streamResponse
@@ -267,6 +278,149 @@ final class ChatViewModel {
 
         streamingText = ""
         isGenerating = false
+        messagesSinceLastImage += 1
+        checkAutoImageTrigger()
+    }
+
+    // MARK: - Image Generation
+
+    /// Check if automatic image generation should be triggered
+    private func checkAutoImageTrigger() {
+        guard let appState else { return }
+        let imgSettings = appState.settings.imageGenerationSettings
+        guard imgSettings.enabled else { return }
+
+        switch imgSettings.triggerMode {
+        case .manual:
+            break
+        case .everyNMessages:
+            if messagesSinceLastImage >= imgSettings.messageInterval {
+                generateImageForCurrentScene()
+            }
+        case .injectedPrompt:
+            // Check if last assistant message contains [GENERATE_IMAGE] tag
+            if let lastMsg = appState.currentChat?.messages.last,
+               !lastMsg.isUser,
+               lastMsg.mes.contains("[GENERATE_IMAGE]") {
+                // Strip the tag from the displayed message
+                if let idx = appState.currentChat?.messages.indices.last {
+                    appState.currentChat?.messages[idx].mes = lastMsg.mes
+                        .replacingOccurrences(of: "[GENERATE_IMAGE]", with: "")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    rewriteCurrentChat()
+                }
+                generateImageForCurrentScene()
+            }
+        }
+    }
+
+    /// Generate an image for the current scene (two-step: LLM summarize → image gen)
+    func generateImageForCurrentScene() {
+        guard let appState, !isGeneratingImage else { return }
+        guard let character = appState.selectedCharacter else { return }
+
+        let imgSettings = appState.settings.imageGenerationSettings
+        guard imgSettings.enabled else {
+            imageGenerationError = "Image generation is not enabled"
+            return
+        }
+
+        let apiKey = appState.imageGenAPIKey()
+        guard !apiKey.isEmpty else {
+            imageGenerationError = "Image generation API key is not configured"
+            return
+        }
+
+        isGeneratingImage = true
+        imageGenerationError = nil
+
+        Task {
+            do {
+                // Step 1: Get a scene description from the main LLM
+                let scenePrompt = try await generateScenePrompt(
+                    character: character,
+                    appState: appState,
+                    imgSettings: imgSettings
+                )
+
+                // Step 2: Generate the image
+                let service = appState.imageGenService()
+                let imageData = try await service.generateImage(
+                    prompt: scenePrompt,
+                    settings: imgSettings,
+                    apiKey: apiKey
+                )
+
+                // Step 3: Save image to disk
+                let charName = character.card.data.name
+                let filename = saveImageToDisk(
+                    imageData: imageData,
+                    characterName: charName,
+                    appState: appState
+                )
+
+                // Step 4: Create image message and append to chat
+                await MainActor.run {
+                    let imageMessage = ChatMessage(
+                        name: charName,
+                        isUser: false,
+                        mes: "*A scene unfolds...*",
+                        imageURL: filename,
+                        imagePrompt: scenePrompt
+                    )
+                    appState.currentChat?.messages.append(imageMessage)
+                    rewriteCurrentChat()
+                    messagesSinceLastImage = 0
+                    isGeneratingImage = false
+
+                    appState.devLogger.log(.info, "[ImageGen] Image generated | Prompt: \(scenePrompt.prefix(100))...")
+                }
+            } catch {
+                await MainActor.run {
+                    imageGenerationError = error.localizedDescription
+                    isGeneratingImage = false
+                    appState.devLogger.log(.error, "[ImageGen] Error: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    /// Use the main LLM to distill the current scene into an image prompt
+    private func generateScenePrompt(
+        character: CharacterEntry,
+        appState: AppState,
+        imgSettings: ImageGenerationSettings
+    ) async throws -> String {
+        guard imgSettings.useMainAPIForSceneSummary,
+              let config = appState.currentAPIConfiguration() else {
+            // Fallback: use character description as prompt
+            return "Scene with \(character.card.data.name): \(character.card.data.description.prefix(200))"
+        }
+
+        let chatHistory = appState.currentChat?.messages ?? []
+        let sceneMessages = ScenePromptBuilder.buildMessages(
+            character: character.card.data,
+            recentMessages: chatHistory,
+            userName: appState.settings.userName,
+            template: imgSettings.scenePromptTemplate
+        )
+
+        let service = appState.currentLLMService()
+        return try await service.sendMessageComplete(messages: sceneMessages, config: config)
+    }
+
+    /// Save generated image data to disk
+    private func saveImageToDisk(imageData: Data, characterName: String, appState: AppState) -> String {
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let uuid = UUID().uuidString.prefix(8)
+        let filename = "\(timestamp)_\(uuid).png"
+        let dir = appState.generatedImagesDirectory(for: characterName)
+        let fileURL = dir.appendingPathComponent(filename)
+
+        try? imageData.write(to: fileURL)
+
+        // Return relative path: CharacterName/filename
+        return "\(characterName.sanitizedFilename())/\(filename)"
     }
 
     // MARK: - Retry Last Response

@@ -17,6 +17,8 @@ struct MessageBubbleView: View {
     var onToggleBookmark: (() -> Void)?
     var onFork: (() -> Void)?
     var chatStyle: ChatStyle?
+    /// Base directory for resolving image URLs
+    var imageBasePath: URL?
 
     var isFocused: Bool = false
 
@@ -81,16 +83,43 @@ struct MessageBubbleView: View {
                         }
                     }
                 } else {
-                    MarkdownTextView(text: message.mes, chatStyle: chatStyle)
-                        .font(.system(size: chatStyle?.fontSize ?? 13))
-                        .textSelection(.enabled)
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(message.isUser
-                                    ? Color.accentColor.opacity(0.08)
-                                    : Color(.controlBackgroundColor).opacity(0.5))
-                        )
+                    VStack(alignment: .leading, spacing: 8) {
+                        MarkdownTextView(text: message.mes, chatStyle: chatStyle)
+                            .font(.system(size: chatStyle?.fontSize ?? 13))
+                            .textSelection(.enabled)
+
+                        // Generated image
+                        if message.hasImage, let imageURL = message.imageURL,
+                           let basePath = imageBasePath {
+                            let imagePath = basePath.appendingPathComponent(imageURL)
+                            if let nsImage = NSImage(contentsOf: imagePath) {
+                                Image(nsImage: nsImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxWidth: 400, maxHeight: 400)
+                                    .cornerRadius(8)
+                                    .contextMenu {
+                                        Button("Copy Image") {
+                                            NSPasteboard.general.clearContents()
+                                            NSPasteboard.general.writeObjects([nsImage])
+                                        }
+                                        if let prompt = message.imagePrompt {
+                                            Button("Copy Prompt") {
+                                                NSPasteboard.general.clearContents()
+                                                NSPasteboard.general.setString(prompt, forType: .string)
+                                            }
+                                        }
+                                    }
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(message.isUser
+                                ? Color.accentColor.opacity(0.08)
+                                : Color(.controlBackgroundColor).opacity(0.5))
+                    )
                 }
 
                 // Swipe arrows (greeting or response swipes)

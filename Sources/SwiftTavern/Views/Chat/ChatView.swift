@@ -65,6 +65,34 @@ struct ChatView: View {
                             .id("streaming")
                         }
 
+                        // Image generation indicator
+                        if chatVM.isGeneratingImage {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("Generating image...")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(12)
+                        }
+
+                        // Image generation error
+                        if let imgError = chatVM.imageGenerationError {
+                            HStack(spacing: 8) {
+                                Image(systemName: "photo.badge.exclamationmark")
+                                    .foregroundColor(.orange)
+                                Text(imgError)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(2)
+                                Button("Dismiss") { chatVM.imageGenerationError = nil }
+                                    .controlSize(.small)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                        }
+
                         // Error with retry
                         if let error = chatVM.errorMessage {
                             VStack(spacing: 8) {
@@ -418,6 +446,7 @@ struct ChatView: View {
             onToggleBookmark: { chatVM.toggleBookmark(at: index) },
             onFork: { chatVM.forkFromMessage(at: index) },
             chatStyle: activeChatStyle,
+            imageBasePath: appState.directoryManager.generatedImagesDirectory,
             isFocused: chatVM.focusedMessageIndex == index,
             swipeInfo: swipe
         )
@@ -550,6 +579,14 @@ struct ChatView: View {
                     chatHeaderLabel("History", icon: "clock.arrow.circlepath")
                 }
                 .help("Chat History")
+
+                if appState.settings.imageGenerationSettings.enabled {
+                    Button(action: { chatVM.generateImageForCurrentScene() }) {
+                        chatHeaderLabel("Image", icon: chatVM.isGeneratingImage ? "hourglass" : "camera")
+                    }
+                    .disabled(chatVM.isGeneratingImage || chatVM.isGenerating)
+                    .help("Generate Scene Image")
+                }
 
                 Menu {
                     Button("Export Chat") { chatVM.exportCurrentChat() }

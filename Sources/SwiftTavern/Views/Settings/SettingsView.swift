@@ -795,33 +795,19 @@ struct SettingsView: View {
 
                     // Image Generation
                     VStack(alignment: .leading, spacing: 4) {
-                        Toggle("Image Generation", isOn: $viewModel.imageGenerationEnabled)
-                            .onChange(of: viewModel.imageGenerationEnabled) { _, _ in
-                                Task { @MainActor in viewModel.saveConfiguration() }
-                            }
-                        Text("Generate images within conversations using AI image models. This feature is under development and not yet functional.")
+                        Toggle("Image Generation", isOn: Binding(
+                            get: { viewModel.imageGenSettings.enabled },
+                            set: { viewModel.imageGenSettings.enabled = $0; viewModel.saveConfiguration() }
+                        ))
+                        Text("Generate images within conversations using AI image models.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                             .padding(.leading, 20)
 
-                        if viewModel.imageGenerationEnabled {
-                            HStack(spacing: 8) {
-                                Image(systemName: "photo.badge.plus")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.secondary)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Coming Soon")
-                                        .font(.system(size: 12, weight: .medium))
-                                    Text("Image generation settings will appear here in a future update. Supported backends will include DALL-E, Stable Diffusion, and more.")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding(12)
-                            .background(Color(.controlBackgroundColor))
-                            .cornerRadius(8)
-                            .padding(.leading, 20)
-                            .padding(.top, 4)
+                        if viewModel.imageGenSettings.enabled {
+                            ImageGenerationSettingsView(viewModel: viewModel)
+                                .padding(.leading, 20)
+                                .padding(.top, 8)
                         }
                     }
 

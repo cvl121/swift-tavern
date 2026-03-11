@@ -18,6 +18,7 @@ final class DataDirectoryManager {
         "themes",
         "backups",
         "thumbnails",
+        "generated_images",
     ]
 
     init(rootDirectory: URL? = nil) {
@@ -49,6 +50,7 @@ final class DataDirectoryManager {
     var backgroundsDirectory: URL { url(for: "backgrounds") }
     var presetsDirectory: URL { url(for: "presets") }
     var backupsDirectory: URL { url(for: "backups") }
+    var generatedImagesDirectory: URL { url(for: "generated_images") }
 
     var settingsFile: URL {
         userDirectory.appendingPathComponent("settings.json")
