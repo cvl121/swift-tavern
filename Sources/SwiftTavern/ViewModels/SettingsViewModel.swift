@@ -63,6 +63,7 @@ final class SettingsViewModel {
     var globalWorldLore: String?
     var chatDisplayLimit: Int
     var chatMessageLengthLimit: Int
+    var uiScale: Double
 
     // Data import/export state
     var showingDataImporter = false
@@ -100,6 +101,7 @@ final class SettingsViewModel {
         self.globalWorldLore = appState.settings.globalWorldLore
         self.chatDisplayLimit = appState.settings.chatDisplayLimit
         self.chatMessageLengthLimit = appState.settings.chatMessageLengthLimit
+        self.uiScale = appState.settings.uiScale
 
         let configData = appState.settings.apiConfigurations[appState.settings.activeAPI.rawValue]
             ?? .defaultConfig(for: appState.settings.activeAPI)
@@ -252,6 +254,7 @@ final class SettingsViewModel {
         appState.settings.globalWorldLore = globalWorldLore
         appState.settings.chatDisplayLimit = chatDisplayLimit
         appState.settings.chatMessageLengthLimit = chatMessageLengthLimit
+        appState.settings.uiScale = uiScale
 
         let configData = APIConfigurationData(
             baseURL: baseURL.isEmpty ? nil : baseURL,

@@ -33,45 +33,52 @@ struct OnboardingView: View {
                 // Features
                 VStack(alignment: .leading, spacing: 16) {
                     featureRow(
-                        icon: "person.text.rectangle.fill",
-                        color: .blue,
-                        title: "Character Cards",
-                        description: "Create, import, and manage AI characters using the TavernCardV2 format. Import characters from SillyTavern as PNG or JSON files."
+                        icon: "bubble.left.and.text.bubble.right.fill",
+                        color: .green,
+                        title: "Rich Chat Experience",
+                        description: "Stream responses in real time, swipe between alternative replies, search across conversations, bookmark messages, and fork chats from any point."
                     )
 
                     featureRow(
-                        icon: "bubble.left.and.text.bubble.right.fill",
-                        color: .green,
-                        title: "Chat Interface",
-                        description: "Have conversations with your characters. Edit, delete, or regenerate messages. Browse alternative responses with swipe navigation."
+                        icon: "person.text.rectangle.fill",
+                        color: .blue,
+                        title: "TavernCardV2 Characters",
+                        description: "Import characters as PNG or JSON, create your own, or drag and drop files onto the sidebar. Fully compatible with the SillyTavern ecosystem."
                     )
 
                     featureRow(
                         icon: "network",
                         color: .orange,
-                        title: "Multiple AI Providers",
-                        description: "Connect to OpenRouter, OpenAI, Claude (Anthropic), Google Gemini, or Ollama for local models. Switch between providers at any time."
+                        title: "Six AI Providers",
+                        description: "Connect to OpenRouter, OpenAI, Claude, Gemini, NovelAI, or run models locally with Ollama. Switch providers and models at any time."
+                    )
+
+                    featureRow(
+                        icon: "paintpalette.fill",
+                        color: .pink,
+                        title: "Customizable Styling",
+                        description: "Color-code dialogue, actions, and narrative text. Set styles globally or per conversation. Full markdown support including headers, bold, italic, and lists."
                     )
 
                     featureRow(
                         icon: "globe",
                         color: .purple,
-                        title: "World Lore",
-                        description: "Create world info books with keyword-triggered entries that are automatically injected into conversations for richer context."
+                        title: "World Lore & Character Books",
+                        description: "Build rich worlds with keyword-triggered lore entries that are automatically woven into conversations. Assign lore globally or per character."
                     )
 
                     featureRow(
-                        icon: "person.circle.fill",
-                        color: .pink,
-                        title: "Personas",
-                        description: "Define multiple user personas with custom descriptions that shape how characters perceive and interact with you."
+                        icon: "person.2.fill",
+                        color: .teal,
+                        title: "Personas & Group Chats",
+                        description: "Define multiple user identities with custom descriptions and avatars. Chat with multiple characters at once using different turn-taking strategies."
                     )
 
                     featureRow(
                         icon: "square.and.arrow.down.on.square.fill",
-                        color: .teal,
+                        color: .indigo,
                         title: "SillyTavern Import",
-                        description: "Import your entire SillyTavern installation including characters, chats, world lore, and presets via Settings > Data."
+                        description: "Bring over your entire SillyTavern setup -- characters, chats, world lore, presets, and personas -- via Settings > Data."
                     )
                 }
                 .padding(.horizontal, 32)
@@ -89,7 +96,7 @@ struct OnboardingView: View {
                             .font(.headline)
                     }
 
-                    Text("SwiftTavern requires your own API key to chat with AI characters. We recommend **OpenRouter** as it gives you access to models from OpenAI, Anthropic, Google, Meta, and more with a single key.\n\nYour keys are stored locally in the app's settings file and are never sent anywhere except to your chosen AI provider.")
+                    Text("SwiftTavern requires your own API key to chat with AI characters. We recommend **OpenRouter** as it gives you access to models from OpenAI, Anthropic, Google, Meta, and more with a single key.\n\nYour keys are stored locally on your Mac and are never sent anywhere except to your chosen AI provider.")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -101,7 +108,7 @@ struct OnboardingView: View {
                     Text("Getting Started")
                         .font(.headline)
 
-                    Text("Head to **Settings > API Provider**, select your provider (OpenRouter recommended), enter your API key, and choose a model. Then pick a character from the sidebar to start chatting.")
+                    Text("Head to **Settings > API Provider**, select your provider, enter your API key, and choose a model. Then pick a character from the sidebar to start chatting.")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -136,7 +143,7 @@ struct OnboardingView: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .frame(width: 600, height: 650)
+        .frame(width: 600, height: 700)
     }
 
     private func featureRow(icon: String, color: Color, title: String, description: String) -> some View {

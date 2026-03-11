@@ -3,15 +3,16 @@ import SwiftUI
 /// Chat message input with send button and configurable enter behavior
 struct ChatInputView: View {
     @Binding var text: String
+    @Binding var inputHeight: CGFloat
     let isGenerating: Bool
     let sendOnEnter: Bool
     var activeModel: String?
     var characterName: String?
     var tokenCount: Int = 0
+    var fontSize: CGFloat = 13
+    var onHeightChanged: (() -> Void)?
     let onSend: () -> Void
     let onStop: () -> Void
-
-    @State private var inputHeight: CGFloat = 32
 
     private let minInputHeight: CGFloat = 32
     private let maxInputHeight: CGFloat = 200
@@ -39,6 +40,9 @@ struct ChatInputView: View {
                     .onChanged { value in
                         let newHeight = inputHeight - value.translation.height
                         inputHeight = min(max(newHeight, minInputHeight), maxInputHeight)
+                    }
+                    .onEnded { _ in
+                        onHeightChanged?()
                     }
             )
 
@@ -69,7 +73,7 @@ struct ChatInputView: View {
 
             HStack(alignment: .bottom, spacing: 8) {
                 TextEditor(text: $text)
-                    .font(.system(size: 13))
+                    .font(.system(size: fontSize))
                     .frame(height: inputHeight)
                     .scrollContentBackground(.hidden)
                     .padding(8)

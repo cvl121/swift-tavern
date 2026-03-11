@@ -12,6 +12,8 @@ final class PersonaViewModel {
     var selectedPersona: Persona?
     var showingImporter = false
     var errorMessage: String?
+    var showDeleteConfirmation = false
+    var pendingDeletePersona: Persona?
 
     private weak var appState: AppState?
 
@@ -82,10 +84,57 @@ final class PersonaViewModel {
         editingAvatarData = nil
     }
 
+    func updatePersona(_ persona: Persona, name: String, description: String) {
+        guard let appState else { return }
+        guard let idx = appState.personas.firstIndex(where: { $0.name == persona.name }) else { return }
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmedName.isEmpty else { return }
+
+        // If renaming, check for duplicates
+        if trimmedName != persona.name && appState.personas.contains(where: { $0.name == trimmedName }) {
+            return
+        }
+
+        // Update active userName if this persona was active
+        if appState.settings.userName == persona.name {
+            appState.settings.userName = trimmedName
+            appState.saveSettings()
+        }
+
+        appState.personas[idx].name = trimmedName
+        appState.personas[idx].description = description
+        try? appState.personaStorage.saveAll(appState.personas)
+
+        // Update selectedPersona to reflect changes
+        selectedPersona = appState.personas[idx]
+    }
+
+    func requestDeletePersona(_ persona: Persona) {
+        pendingDeletePersona = persona
+        showDeleteConfirmation = true
+    }
+
+    func confirmDeletePersona() {
+        guard let persona = pendingDeletePersona else {
+            showDeleteConfirmation = false
+            return
+        }
+        deletePersona(persona)
+        if selectedPersona?.name == persona.name {
+            selectedPersona = nil
+        }
+        showDeleteConfirmation = false
+        pendingDeletePersona = nil
+    }
+
     func deletePersona(_ persona: Persona) {
         guard let appState else { return }
         appState.personas.removeAll { $0.name == persona.name }
         try? appState.personaStorage.saveAll(appState.personas)
+    }
+
+    func isActivePersona(name: String) -> Bool {
+        appState?.settings.userName == name
     }
 
     func selectAsActive(_ persona: Persona) {

@@ -16,8 +16,14 @@ struct ChatView: View {
         return appState.personaStorage.loadAvatar(filename: filename)
     }
 
+    /// Per-conversation style if set, otherwise global style from settings
     private var activeChatStyle: ChatStyle? {
-        appState.settings.chatStyle
+        appState.currentChat?.metadata.chatMetadata.chatStyle ?? appState.settings.chatStyle
+    }
+
+    /// Whether the current conversation has a custom style override
+    private var hasConversationStyle: Bool {
+        appState.currentChat?.metadata.chatMetadata.chatStyle != nil
     }
 
     var body: some View {
@@ -27,15 +33,9 @@ struct ChatView: View {
 
             Divider()
 
-            // Cross-chat search bar (toggleable)
-            if chatVM.showingSearch {
-                searchBar
-                Divider()
-            }
-
-            // In-chat search bar
-            if chatVM.showingInChatSearch {
-                inChatSearchBar
+            // Unified search bar
+            if chatVM.showingSearch || chatVM.showingInChatSearch {
+                unifiedSearchBar
                 Divider()
             }
 
@@ -47,8 +47,9 @@ struct ChatView: View {
                         let displayMessages = chatVM.showingBookmarksOnly
                             ? allDisplayMessages.enumerated().filter { $0.element.isBookmarked }
                             : Array(allDisplayMessages.enumerated())
-                        ForEach(displayMessages, id: \.element.id) { index, message in
-                            messageBubble(index: index, message: message)
+                        ForEach(displayMessages, id: \.element.id) { offset, message in
+                            // Use offset (original index in full messages array) for operations
+                            messageBubble(index: offset, message: message)
                                 .id(message.id)
                         }
 
@@ -137,6 +138,14 @@ struct ChatView: View {
                         scrollToBottom(proxy: proxy, animated: true)
                     }
                 }
+                .onChange(of: chatVM.messages.last?.swipeId) {
+                    // Re-anchor scroll when user swipes between response versions
+                    scrollToBottom(proxy: proxy, animated: false)
+                }
+                .onChange(of: chatVM.greetingSwipeIndex) {
+                    // Re-anchor scroll when user swipes between greeting versions
+                    scrollToBottom(proxy: proxy, animated: false)
+                }
             }
 
             Divider()
@@ -144,11 +153,17 @@ struct ChatView: View {
             // Input area
             ChatInputView(
                 text: $chatVM.inputText,
+                inputHeight: Binding(
+                    get: { CGFloat(appState.settings.chatInputHeight) },
+                    set: { appState.settings.chatInputHeight = Double($0) }
+                ),
                 isGenerating: chatVM.isGenerating,
                 sendOnEnter: appState.settings.sendOnEnter,
                 activeModel: appState.currentAPIConfiguration()?.model,
                 characterName: chatVM.characterName,
                 tokenCount: chatVM.estimatedTokenCount,
+                fontSize: CGFloat(activeChatStyle?.fontSize ?? 13),
+                onHeightChanged: { appState.saveSettings() },
                 onSend: { chatVM.sendMessage() },
                 onStop: { chatVM.stopGenerating() }
             )
@@ -200,13 +215,26 @@ struct ChatView: View {
             )
         }
         .sheet(isPresented: $showingChatStyleEditor) {
-            ChatStyleEditorView(chatStyle: Binding(
-                get: { appState.settings.chatStyle },
-                set: {
-                    appState.settings.chatStyle = $0
-                    appState.saveSettings()
+            ChatStyleEditorView(
+                chatStyle: Binding(
+                    get: { activeChatStyle ?? .default },
+                    set: { newStyle in
+                        // Save as per-conversation override
+                        appState.currentChat?.metadata.chatMetadata.chatStyle = newStyle
+                        if let chat = appState.currentChat {
+                            chatVM.rewriteChat(chat)
+                        }
+                    }
+                ),
+                hasConversationOverride: hasConversationStyle,
+                onResetToGlobal: {
+                    // Remove per-conversation override, revert to global
+                    appState.currentChat?.metadata.chatMetadata.chatStyle = nil
+                    if let chat = appState.currentChat {
+                        chatVM.rewriteChat(chat)
+                    }
                 }
-            ))
+            )
         }
         // Prompt preview sheet
         .sheet(isPresented: $chatVM.showingPromptPreview) {
@@ -407,21 +435,22 @@ struct ChatView: View {
                 .help("Chat Style")
 
                 Button(action: {
-                    chatVM.showingInChatSearch.toggle()
-                    if !chatVM.showingInChatSearch {
+                    let isOpen = chatVM.showingSearch || chatVM.showingInChatSearch
+                    if isOpen {
+                        chatVM.showingSearch = false
+                        chatVM.showingInChatSearch = false
+                        chatVM.searchQuery = ""
                         chatVM.inChatSearchQuery = ""
                         chatVM.inChatSearchResults = []
+                    } else {
+                        chatVM.showingInChatSearch = true
                     }
                 }) {
-                    chatHeaderLabel("Find", icon: "magnifyingglass")
+                    chatHeaderLabel("Search", icon: "magnifyingglass")
+                        .foregroundColor((chatVM.showingSearch || chatVM.showingInChatSearch) ? .accentColor : .primary)
                 }
-                .help("Search in Chat (Cmd+F)")
+                .help("Search Messages (Cmd+F)")
                 .keyboardShortcut("f", modifiers: .command)
-
-                Button(action: { chatVM.showingSearch.toggle() }) {
-                    chatHeaderLabel("Search All", icon: "text.magnifyingglass")
-                }
-                .help("Search All Chats")
 
                 Button(action: { chatVM.newChat() }) {
                     chatHeaderLabel("New Chat", icon: "plus.message")
@@ -470,19 +499,88 @@ struct ChatView: View {
         .padding(.vertical, 8)
     }
 
-    // MARK: - Search Bar
+    // MARK: - Unified Search Bar
 
-    private var searchBar: some View {
+    @State private var searchScope: SearchScope = .thisChat
+
+    private enum SearchScope: String, CaseIterable {
+        case thisChat = "This Chat"
+        case allChats = "All Chats"
+    }
+
+    private var unifiedSearchBar: some View {
         VStack(spacing: 6) {
-            HStack {
-                TextField("Search messages...", text: $chatVM.searchQuery)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { chatVM.performSearch() }
+            HStack(spacing: 8) {
+                Picker("", selection: $searchScope) {
+                    ForEach(SearchScope.allCases, id: \.self) { scope in
+                        Text(scope.rawValue).tag(scope)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 200)
+                .onChange(of: searchScope) { _, newScope in
+                    // Clear results when switching scope
+                    chatVM.inChatSearchResults = []
+                    chatVM.searchResults = []
+                    chatVM.hasSearched = false
+                    if newScope == .thisChat {
+                        chatVM.showingInChatSearch = true
+                        chatVM.showingSearch = false
+                    } else {
+                        chatVM.showingSearch = true
+                        chatVM.showingInChatSearch = false
+                    }
+                }
 
-                Button("Search") { chatVM.performSearch() }
-                    .controlSize(.small)
+                if searchScope == .thisChat {
+                    TextField("Find in conversation...", text: $chatVM.inChatSearchQuery)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { chatVM.searchInCurrentChat() }
+                } else {
+                    TextField("Search all chats...", text: $chatVM.searchQuery)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { chatVM.performSearch() }
+                }
 
-                Button(action: { chatVM.showingSearch = false; chatVM.searchQuery = "" }) {
+                // In-chat navigation controls
+                if searchScope == .thisChat {
+                    if !chatVM.inChatSearchResults.isEmpty {
+                        Text("\(chatVM.currentSearchResultIndex + 1)/\(chatVM.inChatSearchResults.count)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+
+                        Button(action: { chatVM.previousSearchResult() }) {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 11))
+                        }
+                        .buttonStyle(.borderless)
+
+                        Button(action: { chatVM.nextSearchResult() }) {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 11))
+                        }
+                        .buttonStyle(.borderless)
+                    } else if !chatVM.inChatSearchQuery.isEmpty {
+                        Text("No matches")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                if searchScope == .allChats {
+                    Button("Search") { chatVM.performSearch() }
+                        .controlSize(.small)
+                }
+
+                Button(action: {
+                    chatVM.showingSearch = false
+                    chatVM.showingInChatSearch = false
+                    chatVM.searchQuery = ""
+                    chatVM.inChatSearchQuery = ""
+                    chatVM.inChatSearchResults = []
+                    chatVM.searchResults = []
+                }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary)
                 }
@@ -491,76 +589,32 @@ struct ChatView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
 
-            if !chatVM.searchResults.isEmpty {
-                ScrollView(.horizontal) {
-                    HStack {
-                        ForEach(chatVM.searchResults, id: \.filename) { result in
-                            Button("\(result.filename.prefix(30))... (\(result.matchingMessages.count) matches)") {
-                                chatVM.loadChat(filename: result.filename)
-                                chatVM.showingSearch = false
+            // Cross-chat search results
+            if searchScope == .allChats {
+                if !chatVM.searchResults.isEmpty {
+                    ScrollView(.horizontal) {
+                        HStack {
+                            ForEach(chatVM.searchResults, id: \.filename) { result in
+                                Button("\(result.filename.prefix(30))... (\(result.matchingMessages.count) matches)") {
+                                    chatVM.loadChat(filename: result.filename)
+                                    chatVM.showingSearch = false
+                                    chatVM.showingInChatSearch = false
+                                }
+                                .controlSize(.small)
+                                .buttonStyle(.bordered)
                             }
-                            .controlSize(.small)
-                            .buttonStyle(.bordered)
                         }
+                        .padding(.horizontal, 12)
                     }
-                    .padding(.horizontal, 12)
+                    .frame(height: 30)
+                } else if chatVM.hasSearched {
+                    Text("No results found for \"\(chatVM.searchQuery)\"")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 4)
                 }
-                .frame(height: 30)
-            } else if chatVM.hasSearched {
-                Text("No results found for \"\(chatVM.searchQuery)\"")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 4)
             }
         }
-    }
-
-    // MARK: - In-Chat Search Bar
-
-    private var inChatSearchBar: some View {
-        HStack(spacing: 8) {
-            TextField("Find in conversation...", text: $chatVM.inChatSearchQuery)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { chatVM.searchInCurrentChat() }
-
-            if !chatVM.inChatSearchResults.isEmpty {
-                Text("\(chatVM.currentSearchResultIndex + 1)/\(chatVM.inChatSearchResults.count)")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .monospacedDigit()
-
-                Button(action: { chatVM.previousSearchResult() }) {
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 11))
-                }
-                .buttonStyle(.borderless)
-
-                Button(action: { chatVM.nextSearchResult() }) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11))
-                }
-                .buttonStyle(.borderless)
-            } else if !chatVM.inChatSearchQuery.isEmpty {
-                Text("No matches")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-
-            Button("Find") { chatVM.searchInCurrentChat() }
-                .controlSize(.small)
-
-            Button(action: {
-                chatVM.showingInChatSearch = false
-                chatVM.inChatSearchQuery = ""
-                chatVM.inChatSearchResults = []
-            }) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
     }
 }

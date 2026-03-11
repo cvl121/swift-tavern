@@ -64,12 +64,18 @@ final class CharacterListViewModel {
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         do {
             let entry = try appState.characterStorage.importCharacter(from: url)
-            appState.characters.append(entry)
+            // Replace existing entry with same filename to avoid duplicates
+            if let existingIndex = appState.characters.firstIndex(where: { $0.filename == entry.filename }) {
+                appState.characters[existingIndex] = entry
+            } else {
+                appState.characters.append(entry)
+            }
             appState.characters.sort { $0.card.data.name.lowercased() < $1.card.data.name.lowercased() }
             errorMessage = nil
             appState.showToast("Character imported: \(entry.card.data.name)")
         } catch {
             errorMessage = "Failed to import character: \(error.localizedDescription)"
+            appState.showToast("Failed to import character: \(error.localizedDescription)", isError: true)
         }
     }
 

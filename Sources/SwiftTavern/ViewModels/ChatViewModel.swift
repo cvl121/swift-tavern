@@ -91,6 +91,12 @@ final class ChatViewModel {
         appState?.settings.userName ?? "User"
     }
 
+    /// Persist the current state of a chat session to disk
+    func rewriteChat(_ session: ChatSession) {
+        guard let appState else { return }
+        try? appState.chatStorage.rewriteChat(session, characterName: characterName)
+    }
+
     // MARK: - Send Message
 
     func sendMessage() {

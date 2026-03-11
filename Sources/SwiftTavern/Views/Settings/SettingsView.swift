@@ -69,6 +69,15 @@ struct SettingsView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.showToast)
+        .fileImporter(
+            isPresented: $viewModel.showingPresetImporterFile,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                viewModel.importPresetFile(from: url)
+            }
+        }
     }
 
     private var toastView: some View {
@@ -351,6 +360,32 @@ struct SettingsView: View {
                 }
             }
 
+            // UI Scale
+            VStack(alignment: .leading, spacing: 6) {
+                Text("UI Text Size")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+                HStack {
+                    Slider(value: $viewModel.uiScale, in: 0.75...1.5, step: 0.05)
+                        .frame(maxWidth: 250)
+                    Text("\(Int(viewModel.uiScale * 100))%")
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 45, alignment: .trailing)
+                    Button("Reset") {
+                        viewModel.uiScale = 1.0
+                        viewModel.saveConfiguration()
+                    }
+                    .controlSize(.small)
+                    .disabled(viewModel.uiScale == 1.0)
+                }
+                .onChange(of: viewModel.uiScale) { _, _ in
+                    viewModel.saveConfiguration()
+                }
+                Text("Scale the app's text size. Does not affect chat message text (use Chat Style for that).")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
             VStack(alignment: .leading, spacing: 6) {
                 Text("User Name")
                     .font(.system(size: 12, weight: .medium))
@@ -404,6 +439,21 @@ struct SettingsView: View {
 
             Divider()
 
+            // Global Chat Style
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Global Chat Style")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                Text("Default text styling for all conversations. Individual conversations can override this via the Style button in the chat header.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+
+                globalChatStyleEditor
+            }
+
+            Divider()
+
             Toggle("Advanced Mode", isOn: $viewModel.advancedMode)
                 .onChange(of: viewModel.advancedMode) { _, _ in
                     viewModel.saveConfiguration()
@@ -418,6 +468,84 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundColor(.green)
             }
+        }
+    }
+
+    private var globalChatStyleEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Font size
+            HStack {
+                Text("Font Size")
+                    .font(.system(size: 12))
+                Spacer()
+                TextField("", value: $viewModel.chatStyle.fontSize, format: .number.precision(.fractionLength(0)))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+                    .multilineTextAlignment(.trailing)
+            }
+            Slider(value: $viewModel.chatStyle.fontSize, in: 10...24, step: 1)
+                .frame(maxWidth: 300)
+
+            HStack(spacing: 16) {
+                globalColorPicker(
+                    title: "Dialogue",
+                    color: $viewModel.chatStyle.quotedTextColor
+                )
+                globalColorPicker(
+                    title: "Actions",
+                    color: $viewModel.chatStyle.italicActionColor
+                )
+                globalColorPicker(
+                    title: "Narrative",
+                    color: $viewModel.chatStyle.narrativeColor
+                )
+            }
+
+            // Preview
+            VStack(alignment: .leading, spacing: 4) {
+                MarkdownTextView(
+                    text: "*She leans against the doorframe.* *\"Hey there!\"* She smiles warmly.",
+                    chatStyle: viewModel.chatStyle
+                )
+                .font(.system(size: viewModel.chatStyle.fontSize))
+            }
+            .padding(10)
+            .background(Color(.controlBackgroundColor))
+            .cornerRadius(8)
+
+            HStack {
+                Spacer()
+                Button("Reset to Defaults") {
+                    viewModel.chatStyle = .default
+                    viewModel.saveConfiguration()
+                }
+                .controlSize(.small)
+            }
+        }
+        .onChange(of: viewModel.chatStyle) { _, _ in
+            viewModel.saveConfiguration()
+        }
+    }
+
+    @ViewBuilder
+    private func globalColorPicker(title: String, color: Binding<CodableColor>) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 11))
+            ColorPicker("", selection: Binding(
+                get: { Color(red: color.wrappedValue.r, green: color.wrappedValue.g, blue: color.wrappedValue.b, opacity: color.wrappedValue.a) },
+                set: { newColor in
+                    if let components = NSColor(newColor).usingColorSpace(.sRGB) {
+                        color.wrappedValue = CodableColor(
+                            r: Double(components.redComponent),
+                            g: Double(components.greenComponent),
+                            b: Double(components.blueComponent),
+                            a: Double(components.alphaComponent)
+                        )
+                    }
+                }
+            ))
+            .labelsHidden()
         }
     }
 
@@ -470,18 +598,6 @@ struct SettingsView: View {
                     }
 
                 Text("Display text labels next to the chat action buttons in the header.")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-
-            // Show individual conversations
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle("Show individual conversations", isOn: $viewModel.showIndividualConversations)
-                    .onChange(of: viewModel.showIndividualConversations) { _, _ in
-                        viewModel.saveConfiguration()
-                    }
-
-                Text("Show each conversation separately in the sidebar instead of grouping by character.")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }

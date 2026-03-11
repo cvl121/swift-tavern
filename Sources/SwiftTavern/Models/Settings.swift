@@ -43,6 +43,10 @@ struct AppSettings: Codable {
     var sidebarWidth: Double
     /// Whether sidebar is visible
     var sidebarVisible: Bool
+    /// Chat input field height
+    var chatInputHeight: Double
+    /// App-wide UI font size multiplier (default 1.0 = 100%)
+    var uiScale: Double
 
     enum CodingKeys: String, CodingKey {
         case activeAPI = "active_api"
@@ -70,6 +74,8 @@ struct AppSettings: Codable {
         case chatMessageLengthLimit = "chat_message_length_limit"
         case sidebarWidth = "sidebar_width"
         case sidebarVisible = "sidebar_visible"
+        case chatInputHeight = "chat_input_height"
+        case uiScale = "ui_scale"
     }
 
     init(from decoder: Decoder) throws {
@@ -99,6 +105,8 @@ struct AppSettings: Codable {
         chatMessageLengthLimit = try container.decodeIfPresent(Int.self, forKey: .chatMessageLengthLimit) ?? 0
         sidebarWidth = try container.decodeIfPresent(Double.self, forKey: .sidebarWidth) ?? 250
         sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
+        chatInputHeight = try container.decodeIfPresent(Double.self, forKey: .chatInputHeight) ?? 32
+        uiScale = try container.decodeIfPresent(Double.self, forKey: .uiScale) ?? 1.0
     }
 
     init(
@@ -115,7 +123,9 @@ struct AppSettings: Codable {
         chatDisplayLimit: Int = 0,
         chatMessageLengthLimit: Int = 0,
         sidebarWidth: Double = 250,
-        sidebarVisible: Bool = true
+        sidebarVisible: Bool = true,
+        chatInputHeight: Double = 32,
+        uiScale: Double = 1.0
     ) {
         self.activeAPI = activeAPI
         self.activeModel = activeModel
@@ -142,6 +152,8 @@ struct AppSettings: Codable {
         self.chatMessageLengthLimit = chatMessageLengthLimit
         self.sidebarWidth = sidebarWidth
         self.sidebarVisible = sidebarVisible
+        self.chatInputHeight = chatInputHeight
+        self.uiScale = uiScale
     }
 
     static let `default` = AppSettings(

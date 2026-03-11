@@ -10,23 +10,43 @@ SwiftTavern was built to change that. The goal is simple: a fast, smooth, native
 
 ## Features
 
-- **Native macOS app** -- built with SwiftUI for a fast, responsive experience that fits right in with the rest of your Mac
-- **Multiple AI providers** -- connect to OpenRouter, OpenAI, Claude, Gemini, NovelAI, or run models locally with Ollama
-- **Bring your own API key** -- your keys are stored locally in the app's settings file, never sent anywhere except to your chosen provider
-- **TavernCardV2 compatible** -- import and export character cards (PNG or JSON) that work with the wider Tavern ecosystem
+### Chat & Conversation
 - **Streaming responses** -- see responses appear in real time as they're generated
-- **Swipes** -- generate alternative responses and swipe between them
-- **Group chats** -- chat with multiple characters at once, with different turn-taking strategies (natural, round robin, random, manual)
-- **World Info & Character Books** -- add lore and context that gets injected into conversations based on keywords, with per-character and global world lore assignment
-- **Personas** -- create and switch between different user identities with custom names, descriptions, and avatars
-- **Chat history** -- all conversations are saved automatically and searchable, with configurable display limits for long chats
-- **Chat styling** -- customize colors for dialogue, actions, and narrative text with labeled live previews
-- **Chat presets** -- save and switch between different generation parameter configurations
-- **Undo support** -- undo message edits and deletions with Cmd+Z (up to 10 steps)
+- **Swipes** -- generate alternative responses and swipe between them, including alternate greetings
+- **Chat history** -- all conversations are saved automatically with per-character history, switchable from the conversation toolbar
+- **Message editing** -- edit, delete, or regenerate any message; undo with Cmd+Z (up to 10 steps)
+- **Unified search** -- search within the current conversation or across all chats for a character from a single search bar
+- **Bookmarks & forks** -- bookmark important messages and fork conversations from any point
+- **Group chats** -- chat with multiple characters at once using different turn-taking strategies (natural, round robin, random, manual)
+
+### Characters & World Building
+- **TavernCardV2 compatible** -- import and export character cards (PNG or JSON) that work with the wider Tavern ecosystem
 - **Drag-and-drop import** -- drag PNG or JSON character files directly onto the sidebar to import
-- **SillyTavern import** -- bring over your existing characters, chats, world info, presets, and personas from SillyTavern
+- **Character books** -- per-character lore entries with keyword triggers, position control, and priority
+- **World Info** -- standalone world lore books with keyword-triggered entries, assignable globally or per-character
+- **Personas** -- create and switch between user identities with custom names, descriptions, and avatars
+
+### AI Providers
+- **Six providers** -- OpenRouter, OpenAI, Claude (Anthropic), Google Gemini, NovelAI, and Ollama (local)
+- **Bring your own API key** -- keys are stored locally and never sent anywhere except to your chosen provider
+- **Live model lists** -- OpenRouter models fetched and searchable in real time
+- **Connection testing** -- verify your API key and endpoint before chatting
+- **Configurable generation** -- temperature, top-p, top-k, penalties, max tokens, stop sequences, and streaming toggle
+
+### Customization
+- **Chat text styling** -- customize colors for dialogue (quoted text), actions (italic/emote), and narrative text with live preview
+- **Per-conversation styles** -- override global chat styling for individual conversations
+- **Markdown support** -- headers, bold, italic, blockquotes, lists, horizontal rules, and inline code in chat messages
+- **Italic speech** -- `*"quoted text in asterisks"*` renders as italic with dialogue color, matching SillyTavern behavior
+- **App-wide UI scale** -- adjust the overall text size of the application interface
 - **Light & dark mode** -- adapts to your system appearance with theme-aware chat colors
-- **Resizable sidebar** -- drag to resize, and the app remembers your preference across sessions
+- **Resizable sidebar** -- drag to resize, persisted across sessions
+- **Persistent input height** -- chat input field remembers its size across navigation
+
+### Data & Import
+- **SillyTavern import** -- bring over your existing characters, chats, world info, presets, and personas
+- **Export options** -- export chats as JSONL or Markdown, export characters as PNG with embedded card data
+- **Local storage** -- all data stored in `~/Library/Application Support/SwiftTavern/`, nothing in the cloud
 
 ## Requirements
 
@@ -35,11 +55,7 @@ SwiftTavern was built to change that. The goal is simple: a fast, smooth, native
 
 ## Getting Started
 
-1. **Build and run** the app (requires Swift 5.9+):
-   ```bash
-   swift build
-   .build/debug/SwiftTavern
-   ```
+1. **Download the DMG** and drag SwiftTavern to your Applications folder, or build from source.
 
 2. **Add an API key** -- go to Settings and enter your key for your preferred provider. OpenRouter is recommended as a starting point since it gives you access to many models through a single key.
 
@@ -65,6 +81,7 @@ SwiftTavern was built to change that. The goal is simple: a fast, smooth, native
 | Cmd + N | New chat |
 | Cmd + Shift + N | New character |
 | Cmd + F | Search in chat |
+| Cmd + Shift + H | Chat history |
 | Cmd + R | Regenerate last response |
 | Cmd + Z | Undo last message edit/delete |
 | Cmd + , | Settings |

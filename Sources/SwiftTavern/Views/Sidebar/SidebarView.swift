@@ -52,6 +52,16 @@ struct SidebarView: View {
             navigationSection
         }
         .clipped()
+        // Character file importer (for sidebar import button)
+        .fileImporter(
+            isPresented: $characterListVM.showingImporter,
+            allowedContentTypes: [.png, .json],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                characterListVM.importCharacter(from: url)
+            }
+        }
         // Export character file saver
         .fileExporter(
             isPresented: $characterListVM.showingExporter,
@@ -124,55 +134,13 @@ struct SidebarView: View {
             }
         }
 
-        if appState.settings.showIndividualConversations {
-            individualConversationsList
-        } else {
-            groupedConversationsList
-        }
+        groupedConversationsList
     }
 
     @ViewBuilder
     private var groupedConversationsList: some View {
         ForEach(filteredConversations) { entry in
             characterConversationRow(entry: entry)
-        }
-        .padding(.horizontal, 4)
-    }
-
-    @ViewBuilder
-    private var individualConversationsList: some View {
-        ForEach(individualConversations, id: \.id) { item in
-            IndividualConversationRowView(
-                item: item,
-                isSelected: appState.selectedSidebarItem == .character(item.entry.filename)
-                    && appState.currentChat?.filename == item.chatFilename,
-                isHovered: hoveredCharacter == item.id
-            )
-            .onHover { hovering in
-                hoveredCharacter = hovering ? item.id : nil
-            }
-            .onTapGesture {
-                characterListVM.selectCharacter(item.entry)
-                if let filename = item.chatFilename {
-                    appState.currentChat = try? appState.chatStorage.loadChat(
-                        characterName: item.entry.card.data.name,
-                        filename: filename
-                    )
-                    appState.saveActiveChatFilename()
-                }
-            }
-            .contextMenu {
-                Button("Edit Character") {
-                    characterListVM.editCharacter(item.entry)
-                }
-                Button("Export Character") {
-                    characterListVM.exportCharacter(item.entry)
-                }
-                Divider()
-                Button("Delete", role: .destructive) {
-                    characterListVM.requestDeleteCharacter(item.entry)
-                }
-            }
         }
         .padding(.horizontal, 4)
     }
@@ -373,38 +341,6 @@ struct SidebarView: View {
         return handled
     }
 
-    struct IndividualConversationItem: Identifiable {
-        let id: String
-        let entry: CharacterEntry
-        let chatFilename: String?
-        let chatDate: Date?
-    }
-
-    private var individualConversations: [IndividualConversationItem] {
-        var items: [IndividualConversationItem] = []
-        for entry in filteredConversations {
-            let charName = entry.card.data.name
-            if let chats = try? appState.chatStorage.listChats(for: charName), !chats.isEmpty {
-                for chat in chats {
-                    items.append(IndividualConversationItem(
-                        id: "\(entry.filename)_\(chat.filename)",
-                        entry: entry,
-                        chatFilename: chat.filename,
-                        chatDate: chat.date
-                    ))
-                }
-            } else {
-                items.append(IndividualConversationItem(
-                    id: entry.filename,
-                    entry: entry,
-                    chatFilename: nil,
-                    chatDate: nil
-                ))
-            }
-        }
-        return items.sorted { ($0.chatDate ?? .distantPast) > ($1.chatDate ?? .distantPast) }
-    }
-
     /// Refresh all chat dates in one pass
     private func refreshChatDates() {
         var cache: [String: Date] = [:]
@@ -470,52 +406,3 @@ private struct ConversationRowView: View {
     }
 }
 
-/// A row showing a specific conversation for a character
-private struct IndividualConversationRowView: View {
-    let item: SidebarView.IndividualConversationItem
-    let isSelected: Bool
-    var isHovered: Bool = false
-
-    var body: some View {
-        HStack(spacing: 10) {
-            AvatarImageView(imageData: item.entry.avatarData, name: item.entry.card.data.name, size: AvatarImageView.sizeMedium)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.entry.card.data.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
-
-                if let date = item.chatDate {
-                    Text(date.relativeDisplayString)
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                } else {
-                    Text("New conversation")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer()
-        }
-        .padding(.vertical, 4)
-        .padding(.leading, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected
-                    ? Color.accentColor.opacity(0.18)
-                    : isHovered
-                        ? Color.primary.opacity(0.06)
-                        : Color.clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
-        )
-        .cornerRadius(6)
-        .contentShape(Rectangle())
-    }
-}

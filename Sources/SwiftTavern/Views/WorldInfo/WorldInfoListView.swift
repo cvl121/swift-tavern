@@ -170,6 +170,15 @@ struct WorldInfoListView: View {
                 }
             }
         }
+        .fileImporter(
+            isPresented: $viewModel.showingImporter,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                viewModel.importWorldLore(from: url)
+            }
+        }
         .alert("New World Lore Book", isPresented: Binding(
             get: { viewModel.showingNewBookDialog },
             set: { viewModel.showingNewBookDialog = $0 }

@@ -109,8 +109,7 @@ struct MarkdownTextView: View {
     private func renderBlock(_ block: Block, style: ChatStyle?) -> some View {
         switch block {
         case .heading(let level, let text):
-            renderInline(text, style: style)
-                .font(.system(size: headingSize(level), weight: .bold))
+            renderInline(text, style: style, fontSizeOverride: headingSize(level), bold: true)
                 .padding(.top, level <= 2 ? 6 : 2)
 
         case .horizontalRule:
@@ -156,12 +155,13 @@ struct MarkdownTextView: View {
     // MARK: - Inline Rendering
 
     @ViewBuilder
-    private func renderInline(_ text: String, style: ChatStyle?) -> some View {
+    private func renderInline(_ text: String, style: ChatStyle?, fontSizeOverride: CGFloat? = nil, bold: Bool = false) -> some View {
         if let style {
-            Text(styledInline(text, style: style))
+            Text(styledInline(text, style: style, fontSizeOverride: fontSizeOverride, bold: bold))
                 .fixedSize(horizontal: false, vertical: true)
         } else {
             Text(parseInlineMarkdown(text))
+                .font(.system(size: fontSizeOverride ?? 13, weight: bold ? .bold : .regular))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -176,35 +176,79 @@ struct MarkdownTextView: View {
         return AttributedString(text)
     }
 
-    /// Parse inline markdown then apply chat style colors
-    private func styledInline(_ text: String, style: ChatStyle) -> AttributedString {
+    /// Parse inline markdown then apply chat style colors per character segment.
+    ///
+    /// Color priority (matches SillyTavern behavior):
+    /// - Quoted text `"..."` always gets dialogue color, even inside `*asterisks*`
+    /// - Italic text outside quotes gets action/emote color
+    /// - Bold text keeps its contextual color (dialogue if quoted, narrative otherwise)
+    /// - All other text gets narrative color
+    private func styledInline(_ text: String, style: ChatStyle, fontSizeOverride: CGFloat? = nil, bold: Bool = false) -> AttributedString {
         var attributed = parseInlineMarkdown(text)
         let plainText = String(attributed.characters)
         let colorMap = buildColorMap(for: plainText)
 
-        var offset = 0
+        // Collect run info first (ranges and emphasis/strong status)
+        struct RunInfo {
+            let range: Range<AttributedString.Index>
+            let length: Int
+            let hasEmphasis: Bool
+            let hasStrong: Bool
+        }
+        var runs: [RunInfo] = []
         for run in attributed.runs {
-            let runLength = attributed[run.range].characters.count
-            let runStart = offset
-            let runEnd = offset + runLength
-            let hasEmphasis = run.inlinePresentationIntent?.contains(.emphasized) ?? false
+            let len = attributed[run.range].characters.count
+            let intent = run.inlinePresentationIntent
+            let emphasis = intent?.contains(.emphasized) ?? false
+            let strong = intent?.contains(.stronglyEmphasized) ?? false
+            runs.append(RunInfo(range: run.range, length: len, hasEmphasis: emphasis, hasStrong: strong))
+        }
 
-            if hasEmphasis {
-                attributed[run.range].foregroundColor = style.italicActionColor.color
-            } else {
-                let quoteCount = (runStart..<runEnd).filter { $0 < colorMap.count && colorMap[$0] }.count
-                if quoteCount > runLength / 2 && quoteCount > 0 {
-                    attributed[run.range].foregroundColor = style.quotedTextColor.color
-                } else {
-                    attributed[run.range].foregroundColor = style.narrativeColor.color
+        // Apply colors by splitting every run at quote boundaries
+        var charOffset = 0
+        for runInfo in runs {
+            let runStart = charOffset
+            let runEnd = charOffset + runInfo.length
+
+            // Split this run into segments where quote status changes
+            var segStart = runStart
+            while segStart < runEnd {
+                let isQuoted = segStart < colorMap.count && colorMap[segStart]
+                var segEnd = segStart + 1
+                while segEnd < runEnd {
+                    let nextIsQuoted = segEnd < colorMap.count && colorMap[segEnd]
+                    if nextIsQuoted != isQuoted { break }
+                    segEnd += 1
                 }
+
+                // Convert character offsets to AttributedString indices
+                let segStartIdx = attributed.characters.index(runInfo.range.lowerBound, offsetBy: segStart - charOffset)
+                let segEndIdx = attributed.characters.index(runInfo.range.lowerBound, offsetBy: segEnd - charOffset)
+                let segRange = segStartIdx..<segEndIdx
+
+                // Color priority: quoted text always gets dialogue color,
+                // italic non-quoted gets action color, everything else narrative
+                if isQuoted {
+                    attributed[segRange].foregroundColor = style.quotedTextColor.color
+                } else if runInfo.hasEmphasis {
+                    attributed[segRange].foregroundColor = style.italicActionColor.color
+                } else {
+                    attributed[segRange].foregroundColor = style.narrativeColor.color
+                }
+
+                segStart = segEnd
             }
 
-            if attributed[run.range].font == nil {
-                attributed[run.range].font = .system(size: style.fontSize)
+            let size = fontSizeOverride ?? CGFloat(style.fontSize)
+            let weight: Font.Weight = bold ? .bold : .regular
+            if attributed[runInfo.range].font == nil {
+                attributed[runInfo.range].font = .system(size: size, weight: weight)
+            } else if bold || fontSizeOverride != nil {
+                // Override font size/weight for headings while preserving italic intent
+                attributed[runInfo.range].font = .system(size: size, weight: weight)
             }
 
-            offset = runEnd
+            charOffset += runInfo.length
         }
 
         return attributed
@@ -245,6 +289,11 @@ struct MarkdownTextView: View {
             Divider()
             MarkdownTextView(
                 text: "*She walks over slowly.* \"Hello there!\" She waves her hand.",
+                chatStyle: .default
+            )
+            Divider()
+            MarkdownTextView(
+                text: "*\"Hello there!\"* she said, *leaning against the wall.*",
                 chatStyle: .default
             )
             Divider()

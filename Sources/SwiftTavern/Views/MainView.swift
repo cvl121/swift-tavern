@@ -91,7 +91,7 @@ struct MainView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Toggle Sidebar")
-                    .padding(.leading, 8)
+                    .padding(.leading, sidebarVisible ? 8 : 76)
 
                     Spacer()
                 }
@@ -103,6 +103,7 @@ struct MainView: View {
             .frame(minWidth: minContentWidth)
         }
         .frame(minWidth: minSidebarWidth + minContentWidth + 1, minHeight: 600)
+        .applyUIScale(appState.settings.uiScale)
         .animation(.easeInOut(duration: 0.2), value: sidebarVisible)
         .clipped()
         .overlay(alignment: .bottom) {
@@ -146,42 +147,6 @@ struct MainView: View {
         }
         .sheet(isPresented: $groupChatVM.showingGroupEditor) {
             GroupEditorView(appState: appState, groupChatVM: groupChatVM)
-        }
-        .fileImporter(
-            isPresented: $characterListVM.showingImporter,
-            allowedContentTypes: [.png, .json],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                characterListVM.importCharacter(from: url)
-            }
-        }
-        .fileImporter(
-            isPresented: $personaVM.showingImporter,
-            allowedContentTypes: [.json],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                personaVM.importPersonas(from: url)
-            }
-        }
-        .fileImporter(
-            isPresented: $worldInfoVM.showingImporter,
-            allowedContentTypes: [.json],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                worldInfoVM.importWorldLore(from: url)
-            }
-        }
-        .fileImporter(
-            isPresented: $settingsVM.showingPresetImporterFile,
-            allowedContentTypes: [.json],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                settingsVM.importPresetFile(from: url)
-            }
         }
     }
 

@@ -3,6 +3,8 @@ import SwiftUI
 /// Sheet for editing chat message text styling (colors, font size)
 struct ChatStyleEditorView: View {
     @Binding var chatStyle: ChatStyle
+    var hasConversationOverride: Bool = false
+    var onResetToGlobal: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -11,6 +13,11 @@ struct ChatStyleEditorView: View {
             HStack {
                 Text("Chat Style")
                     .font(.title2.bold())
+                if hasConversationOverride {
+                    Text("(Custom)")
+                        .font(.system(size: 12))
+                        .foregroundColor(.accentColor)
+                }
                 Spacer()
                 Button("Done") { dismiss() }
                     .buttonStyle(.borderedProminent)
@@ -22,9 +29,28 @@ struct ChatStyleEditorView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Customize how chat message text is displayed. Colors apply to character (assistant) messages.")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
+                    if hasConversationOverride {
+                        HStack(spacing: 8) {
+                            Image(systemName: "paintbrush.pointed")
+                                .foregroundColor(.accentColor)
+                            Text("This conversation has custom styling. Changes here only affect this conversation.")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Button("Reset to Global") {
+                                onResetToGlobal?()
+                            }
+                            .controlSize(.small)
+                            .buttonStyle(.bordered)
+                        }
+                        .padding(10)
+                        .background(Color.accentColor.opacity(0.06))
+                        .cornerRadius(8)
+                    } else {
+                        Text("Customize how chat message text is displayed. Changing style here creates a custom override for this conversation.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
 
                     // Font size
                     HStack {
@@ -102,6 +128,17 @@ struct ChatStyleEditorView: View {
                                 .font(.system(size: chatStyle.fontSize))
                             }
 
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Italic Speech (*\"...\"*)")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                MarkdownTextView(
+                                    text: "*\"I was wondering when you'd show up,\"* *she says with a grin.*",
+                                    chatStyle: chatStyle
+                                )
+                                .font(.system(size: chatStyle.fontSize))
+                            }
+
                             Divider()
 
                             VStack(alignment: .leading, spacing: 2) {
@@ -134,7 +171,7 @@ struct ChatStyleEditorView: View {
                 .padding(20)
             }
         }
-        .frame(width: 500, height: 550)
+        .frame(width: 500, height: 580)
     }
 
     @ViewBuilder

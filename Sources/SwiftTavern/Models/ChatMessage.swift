@@ -85,15 +85,19 @@ struct ChatMetadata: Codable, Equatable {
 struct ChatMetadataInfo: Codable, Equatable {
     var note: String?
     var tpiDescription: String?
+    /// Per-conversation chat style override (nil = use global style)
+    var chatStyle: ChatStyle?
 
     enum CodingKeys: String, CodingKey {
         case note
         case tpiDescription = "tpi_description"
+        case chatStyle = "chat_style"
     }
 
-    init(note: String? = nil, tpiDescription: String? = nil) {
+    init(note: String? = nil, tpiDescription: String? = nil, chatStyle: ChatStyle? = nil) {
         self.note = note
         self.tpiDescription = tpiDescription
+        self.chatStyle = chatStyle
     }
 }
 

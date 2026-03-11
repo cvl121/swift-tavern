@@ -26,6 +26,8 @@ struct CharacterListView: View {
         return handled
     }
 
+    @State private var showingFileImporter = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
@@ -35,7 +37,7 @@ struct CharacterListView: View {
 
                 Spacer()
 
-                Button(action: { characterListVM.showingImporter = true }) {
+                Button(action: { showingFileImporter = true }) {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(.bordered)
@@ -92,6 +94,15 @@ struct CharacterListView: View {
                 .onDrop(of: [.png, .json, .fileURL], isTargeted: nil) { providers in
                     handleDrop(providers: providers)
                 }
+            }
+        }
+        .fileImporter(
+            isPresented: $showingFileImporter,
+            allowedContentTypes: [.png, .json],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                characterListVM.importCharacter(from: url)
             }
         }
     }
