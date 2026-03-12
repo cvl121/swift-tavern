@@ -5,6 +5,7 @@ enum ImageGenProvider: String, Codable, CaseIterable, Identifiable {
     case openaiDalle = "openai_dalle"
     case stabilityAI = "stability_ai"
     case openrouter = "openrouter"
+    case novelai = "novelai"
     case custom = "custom"
 
     var id: String { rawValue }
@@ -14,15 +15,27 @@ enum ImageGenProvider: String, Codable, CaseIterable, Identifiable {
         case .openaiDalle: return "OpenAI DALL-E"
         case .stabilityAI: return "Stability AI"
         case .openrouter: return "OpenRouter"
+        case .novelai: return "NovelAI"
         case .custom: return "Custom"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .openaiDalle: return "Generate images with DALL-E 3 or gpt-image-1. Requires an OpenAI API key."
+        case .stabilityAI: return "Generate images with Stable Diffusion models. Requires a Stability AI key."
+        case .openrouter: return "Use image models through OpenRouter. Uses your OpenRouter API key."
+        case .novelai: return "Generate anime-style images with NovelAI Diffusion. Uses your NovelAI API key."
+        case .custom: return "Connect to a custom image generation API that uses the OpenAI images format."
         }
     }
 
     var defaultModels: [String] {
         switch self {
-        case .openaiDalle: return ["dall-e-3", "dall-e-2", "gpt-image-1"]
-        case .stabilityAI: return ["stable-diffusion-xl-1024-v1-0", "stable-diffusion-v1-6", "stable-image-ultra"]
-        case .openrouter: return ["openai/dall-e-3"]
+        case .openaiDalle: return ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-3", "dall-e-2"]
+        case .stabilityAI: return ["sd3.5-large", "sd3.5-large-turbo", "sd3.5-medium"]
+        case .openrouter: return ["openai/gpt-5-image-mini", "openai/gpt-5-image", "google/gemini-2.5-flash-image", "google/gemini-3.1-flash-image-preview", "google/gemini-3-pro-image-preview"]
+        case .novelai: return ["nai-diffusion-4-5-curated", "nai-diffusion-4-5-full", "nai-diffusion-4-curated-preview", "nai-diffusion-4-full", "nai-diffusion-3"]
         case .custom: return []
         }
     }
@@ -32,12 +45,23 @@ enum ImageGenProvider: String, Codable, CaseIterable, Identifiable {
         case .openaiDalle: return "https://api.openai.com"
         case .stabilityAI: return "https://api.stability.ai"
         case .openrouter: return "https://openrouter.ai/api"
+        case .novelai: return "https://image.novelai.net"
         case .custom: return ""
         }
     }
 
     var apiKeySettingsKey: String {
         "image_gen_\(rawValue)"
+    }
+
+    /// Whether this provider can share an API key with a text provider
+    var sharedTextProvider: APIType? {
+        switch self {
+        case .openaiDalle: return .openai
+        case .openrouter: return .openrouter
+        case .novelai: return .novelai
+        default: return nil
+        }
     }
 }
 
@@ -56,6 +80,14 @@ enum ImageTriggerMode: String, Codable, CaseIterable, Identifiable {
         case .injectedPrompt: return "LLM-Triggered"
         }
     }
+
+    var description: String {
+        switch self {
+        case .manual: return "Click the camera button in the chat to generate an image of the current scene."
+        case .everyNMessages: return "Automatically generate an image after a set number of messages."
+        case .injectedPrompt: return "The AI will decide when to generate images based on the story."
+        }
+    }
 }
 
 /// Image output dimensions
@@ -63,6 +95,8 @@ enum ImageSize: String, Codable, CaseIterable, Identifiable {
     case square1024 = "1024x1024"
     case landscape1792x1024 = "1792x1024"
     case portrait1024x1792 = "1024x1792"
+    case square512 = "512x512"
+    case square768 = "768x768"
 
     var id: String { rawValue }
 
@@ -71,6 +105,8 @@ enum ImageSize: String, Codable, CaseIterable, Identifiable {
         case .square1024: return "Square (1024x1024)"
         case .landscape1792x1024: return "Landscape (1792x1024)"
         case .portrait1024x1792: return "Portrait (1024x1792)"
+        case .square512: return "Small Square (512x512)"
+        case .square768: return "Medium Square (768x768)"
         }
     }
 
@@ -79,6 +115,8 @@ enum ImageSize: String, Codable, CaseIterable, Identifiable {
         case .square1024: return 1024
         case .landscape1792x1024: return 1792
         case .portrait1024x1792: return 1024
+        case .square512: return 512
+        case .square768: return 768
         }
     }
 
@@ -87,6 +125,8 @@ enum ImageSize: String, Codable, CaseIterable, Identifiable {
         case .square1024: return 1024
         case .landscape1792x1024: return 1024
         case .portrait1024x1792: return 1792
+        case .square512: return 512
+        case .square768: return 768
         }
     }
 }
@@ -106,6 +146,43 @@ enum ImageQuality: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Controls how large images appear in the chat conversation
+enum ImageDisplaySize: String, Codable, CaseIterable, Identifiable {
+    case small
+    case medium
+    case large
+    case full
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .small: return "Small"
+        case .medium: return "Medium"
+        case .large: return "Large"
+        case .full: return "Full Width"
+        }
+    }
+
+    var maxWidth: CGFloat {
+        switch self {
+        case .small: return 200
+        case .medium: return 350
+        case .large: return 500
+        case .full: return .infinity
+        }
+    }
+
+    var maxHeight: CGFloat {
+        switch self {
+        case .small: return 200
+        case .medium: return 350
+        case .large: return 500
+        case .full: return 600
+        }
+    }
+}
+
 /// Settings for image generation feature
 struct ImageGenerationSettings: Codable, Equatable {
     var enabled: Bool
@@ -119,6 +196,10 @@ struct ImageGenerationSettings: Codable, Equatable {
     var injectionPrompt: String
     var scenePromptTemplate: String
     var useMainAPIForSceneSummary: Bool
+    /// Whether to use the same API key as the text provider (when providers overlap)
+    var useSharedAPIKey: Bool
+    /// How large images appear in the conversation
+    var displaySize: ImageDisplaySize
 
     enum CodingKeys: String, CodingKey {
         case enabled, provider, model, quality
@@ -129,6 +210,55 @@ struct ImageGenerationSettings: Codable, Equatable {
         case injectionPrompt = "injection_prompt"
         case scenePromptTemplate = "scene_prompt_template"
         case useMainAPIForSceneSummary = "use_main_api_for_scene_summary"
+        case useSharedAPIKey = "use_shared_api_key"
+        case displaySize = "display_size"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        provider = try container.decodeIfPresent(ImageGenProvider.self, forKey: .provider) ?? .openaiDalle
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? "dall-e-3"
+        baseURL = try container.decodeIfPresent(String.self, forKey: .baseURL)
+        imageSize = try container.decodeIfPresent(ImageSize.self, forKey: .imageSize) ?? .square1024
+        quality = try container.decodeIfPresent(ImageQuality.self, forKey: .quality) ?? .standard
+        triggerMode = try container.decodeIfPresent(ImageTriggerMode.self, forKey: .triggerMode) ?? .manual
+        messageInterval = try container.decodeIfPresent(Int.self, forKey: .messageInterval) ?? 5
+        injectionPrompt = try container.decodeIfPresent(String.self, forKey: .injectionPrompt) ?? Self.defaultInjectionPrompt
+        scenePromptTemplate = try container.decodeIfPresent(String.self, forKey: .scenePromptTemplate) ?? Self.defaultScenePromptTemplate
+        useMainAPIForSceneSummary = try container.decodeIfPresent(Bool.self, forKey: .useMainAPIForSceneSummary) ?? true
+        useSharedAPIKey = try container.decodeIfPresent(Bool.self, forKey: .useSharedAPIKey) ?? true
+        displaySize = try container.decodeIfPresent(ImageDisplaySize.self, forKey: .displaySize) ?? .medium
+    }
+
+    init(
+        enabled: Bool = false,
+        provider: ImageGenProvider = .openaiDalle,
+        model: String = "dall-e-3",
+        baseURL: String? = nil,
+        imageSize: ImageSize = .square1024,
+        quality: ImageQuality = .standard,
+        triggerMode: ImageTriggerMode = .manual,
+        messageInterval: Int = 5,
+        injectionPrompt: String = ImageGenerationSettings.defaultInjectionPrompt,
+        scenePromptTemplate: String = ImageGenerationSettings.defaultScenePromptTemplate,
+        useMainAPIForSceneSummary: Bool = true,
+        useSharedAPIKey: Bool = true,
+        displaySize: ImageDisplaySize = .medium
+    ) {
+        self.enabled = enabled
+        self.provider = provider
+        self.model = model
+        self.baseURL = baseURL
+        self.imageSize = imageSize
+        self.quality = quality
+        self.triggerMode = triggerMode
+        self.messageInterval = messageInterval
+        self.injectionPrompt = injectionPrompt
+        self.scenePromptTemplate = scenePromptTemplate
+        self.useMainAPIForSceneSummary = useMainAPIForSceneSummary
+        self.useSharedAPIKey = useSharedAPIKey
+        self.displaySize = displaySize
     }
 
     static let defaultInjectionPrompt = """
@@ -164,17 +294,5 @@ struct ImageGenerationSettings: Codable, Equatable {
         suitable for an AI image generator.
         """
 
-    static let `default` = ImageGenerationSettings(
-        enabled: false,
-        provider: .openaiDalle,
-        model: "dall-e-3",
-        baseURL: nil,
-        imageSize: .square1024,
-        quality: .standard,
-        triggerMode: .manual,
-        messageInterval: 5,
-        injectionPrompt: defaultInjectionPrompt,
-        scenePromptTemplate: defaultScenePromptTemplate,
-        useMainAPIForSceneSummary: true
-    )
+    static let `default` = ImageGenerationSettings()
 }

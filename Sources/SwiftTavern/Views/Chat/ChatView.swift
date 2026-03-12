@@ -224,9 +224,12 @@ struct ChatView: View {
                 characterName: chatVM.characterName,
                 tokenCount: chatVM.estimatedTokenCount,
                 fontSize: CGFloat(activeChatStyle?.fontSize ?? 13),
+                imageGenEnabled: appState.settings.imageGenerationSettings.enabled,
+                isGeneratingImage: chatVM.isGeneratingImage,
                 onHeightChanged: { appState.saveSettings() },
                 onSend: { chatVM.sendMessage() },
-                onStop: { chatVM.stopGenerating() }
+                onStop: { chatVM.stopGenerating() },
+                onGenerateImage: { chatVM.generateImageForCurrentScene() }
             )
         }
         // Auto-save indicator
@@ -447,6 +450,7 @@ struct ChatView: View {
             onFork: { chatVM.forkFromMessage(at: index) },
             chatStyle: activeChatStyle,
             imageBasePath: appState.directoryManager.generatedImagesDirectory,
+            imageDisplaySize: appState.settings.imageGenerationSettings.displaySize,
             isFocused: chatVM.focusedMessageIndex == index,
             swipeInfo: swipe
         )
@@ -535,7 +539,7 @@ struct ChatView: View {
                     chatVM.showingBookmarksOnly.toggle()
                 }) {
                     chatHeaderLabel("Bookmarks", icon: chatVM.showingBookmarksOnly ? "star.fill" : "star")
-                        .foregroundColor(chatVM.showingBookmarksOnly ? .yellow : .primary)
+                        .foregroundColor(chatVM.showingBookmarksOnly ? .yellow : .secondary)
                 }
                 .help("Filter Bookmarked Messages")
 
@@ -543,11 +547,13 @@ struct ChatView: View {
                     autoScrollEnabled.toggle()
                 }) {
                     chatHeaderLabel("Auto-Scroll", icon: autoScrollEnabled ? "arrow.down.circle.fill" : "arrow.down.circle")
+                        .foregroundColor(autoScrollEnabled ? .accentColor : .secondary)
                 }
                 .help(autoScrollEnabled ? "Disable Auto-Scroll" : "Enable Auto-Scroll")
 
                 Button(action: { showingChatStyleEditor = true }) {
                     chatHeaderLabel("Style", icon: "paintbrush")
+                        .foregroundColor(.secondary)
                 }
                 .help("Chat Style")
 
@@ -564,7 +570,7 @@ struct ChatView: View {
                     }
                 }) {
                     chatHeaderLabel("Search", icon: "magnifyingglass")
-                        .foregroundColor((chatVM.showingSearch || chatVM.showingInChatSearch) ? .accentColor : .primary)
+                        .foregroundColor((chatVM.showingSearch || chatVM.showingInChatSearch) ? .accentColor : .secondary)
                 }
                 .disabled(chatVM.isGenerating)
                 .help("Search Messages (Cmd+F)")
@@ -572,17 +578,20 @@ struct ChatView: View {
 
                 Button(action: { chatVM.newChat() }) {
                     chatHeaderLabel("New Chat", icon: "plus.message")
+                        .foregroundColor(.secondary)
                 }
                 .help("New Chat (Cmd+N)")
 
                 Button(action: { chatVM.showingChatPicker = true }) {
                     chatHeaderLabel("History", icon: "clock.arrow.circlepath")
+                        .foregroundColor(.secondary)
                 }
                 .help("Chat History")
 
                 if appState.settings.imageGenerationSettings.enabled {
                     Button(action: { chatVM.generateImageForCurrentScene() }) {
-                        chatHeaderLabel("Image", icon: chatVM.isGeneratingImage ? "hourglass" : "camera")
+                        chatHeaderLabel("Image", icon: chatVM.isGeneratingImage ? "hourglass" : "photo")
+                            .foregroundColor(.secondary)
                     }
                     .disabled(chatVM.isGeneratingImage || chatVM.isGenerating)
                     .help("Generate Scene Image")
@@ -599,6 +608,7 @@ struct ChatView: View {
                     }
                 } label: {
                     chatHeaderLabel("More", icon: "square.and.arrow.up")
+                        .foregroundColor(.secondary)
                 }
                 .help("Export / Import")
 
@@ -608,6 +618,7 @@ struct ChatView: View {
             if chatVM.canUndo {
                 Button(action: { chatVM.undo() }) {
                     chatHeaderLabel("Undo", icon: "arrow.uturn.backward")
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.borderless)
                 .help("Undo: \(chatVM.lastUndoDescription ?? "") (Cmd+Z)")
@@ -616,6 +627,7 @@ struct ChatView: View {
             if !chatVM.isGenerating, let lastMsg = chatVM.messages.last, !lastMsg.isUser {
                 Button(action: { chatVM.regenerateResponse() }) {
                     chatHeaderLabel("Regenerate", icon: "arrow.clockwise")
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.borderless)
                 .help("Regenerate Last Response")

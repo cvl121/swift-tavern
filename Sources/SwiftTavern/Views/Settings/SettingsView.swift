@@ -50,11 +50,14 @@ struct SettingsView: View {
 
             // Settings content
             ScrollView {
-                settingsContent
-                    .padding(24)
-                    .frame(maxWidth: 600, alignment: .leading)
+                HStack {
+                    settingsContent
+                        .padding(24)
+                        .frame(maxWidth: 600, alignment: .leading)
+                    Spacer(minLength: 0)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         // Toast overlay
         .overlay(alignment: .bottom) {
@@ -286,6 +289,13 @@ struct SettingsView: View {
                 Text(status)
                     .font(.caption)
                     .foregroundColor(.green)
+            }
+
+            // Image Generation section (when experimental features enabled)
+            if viewModel.experimentalFeatures {
+                Divider()
+                    .padding(.vertical, 8)
+                ImageGenerationSettingsView(viewModel: viewModel)
             }
         }
     }
@@ -799,16 +809,10 @@ struct SettingsView: View {
                             get: { viewModel.imageGenSettings.enabled },
                             set: { viewModel.imageGenSettings.enabled = $0; viewModel.saveConfiguration() }
                         ))
-                        Text("Generate images within conversations using AI image models.")
+                        Text("Generate images within conversations using AI image models. When enabled, image generation settings appear in the API Provider section.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                             .padding(.leading, 20)
-
-                        if viewModel.imageGenSettings.enabled {
-                            ImageGenerationSettingsView(viewModel: viewModel)
-                                .padding(.leading, 20)
-                                .padding(.top, 8)
-                        }
                     }
 
                     Divider()

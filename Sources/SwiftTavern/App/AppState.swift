@@ -189,9 +189,18 @@ final class AppState {
         ImageGenServiceFactory.create(for: settings.imageGenerationSettings.provider)
     }
 
-    /// Get the API key for the current image gen provider
+    /// Get the API key for the current image gen provider.
+    /// If useSharedAPIKey is enabled and the provider overlaps with a text provider, uses that key.
     func imageGenAPIKey() -> String {
-        settings.apiKeys[settings.imageGenerationSettings.provider.apiKeySettingsKey] ?? ""
+        let imgSettings = settings.imageGenerationSettings
+        // Check for shared key first
+        if imgSettings.useSharedAPIKey,
+           let textProvider = imgSettings.provider.sharedTextProvider {
+            let sharedKey = settings.apiKeys[textProvider.rawValue] ?? ""
+            if !sharedKey.isEmpty { return sharedKey }
+        }
+        // Fall back to dedicated image gen key
+        return settings.apiKeys[imgSettings.provider.apiKeySettingsKey] ?? ""
     }
 
     /// Get the directory for storing generated images for a character

@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// Settings view for image generation configuration
+/// Embedded within the API Provider settings section
 struct ImageGenerationSettingsView: View {
     @Bindable var viewModel: SettingsViewModel
 
@@ -9,11 +10,9 @@ struct ImageGenerationSettingsView: View {
             Text("Image Generation")
                 .font(.title2.bold())
 
-            Text("Generate images during conversations using AI image models. The main LLM summarizes the current scene into a visual prompt, then an image generation API produces the image.")
+            Text("Configure the AI provider for image generation in conversations. This is separate from the text provider used for chat.")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
-
-            Divider()
 
             // Master toggle
             Toggle("Enable Image Generation", isOn: $viewModel.imageGenSettings.enabled)
@@ -24,11 +23,15 @@ struct ImageGenerationSettingsView: View {
             if viewModel.imageGenSettings.enabled {
                 providerSection
                 Divider()
-                imageOptionsSection
-                Divider()
-                triggerSection
-                Divider()
-                promptSection
+                displaySection
+                if viewModel.advancedMode {
+                    Divider()
+                    imageOptionsSection
+                    Divider()
+                    triggerSection
+                    Divider()
+                    promptSection
+                }
             }
         }
     }
@@ -37,10 +40,10 @@ struct ImageGenerationSettingsView: View {
 
     private var providerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Provider")
+            Text("Image Provider")
                 .font(.headline)
 
-            HStack {
+            HStack(spacing: 12) {
                 Picker("Provider", selection: $viewModel.imageGenSettings.provider) {
                     ForEach(ImageGenProvider.allCases) { provider in
                         Text(provider.displayName).tag(provider)
@@ -54,57 +57,86 @@ struct ImageGenerationSettingsView: View {
                 viewModel.switchImageGenProvider(newProvider)
             }
 
-            // API Key
-            VStack(alignment: .leading, spacing: 6) {
-                Text("API Key")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.secondary)
+            Text(viewModel.imageGenSettings.provider.description)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
 
-                HStack(spacing: 8) {
-                    Group {
-                        if viewModel.showImageGenAPIKey {
-                            TextField("Enter API key", text: $viewModel.imageGenAPIKey)
-                        } else {
-                            SecureField("Enter API key", text: $viewModel.imageGenAPIKey)
-                        }
-                    }
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 300)
-
-                    Button(action: { viewModel.showImageGenAPIKey.toggle() }) {
-                        Image(systemName: viewModel.showImageGenAPIKey ? "eye.slash" : "eye")
-                    }
-                    .buttonStyle(.borderless)
-
-                    Button("Save Key") {
+            // Shared API key toggle (when provider has a matching text provider)
+            if let textProvider = viewModel.imageGenSettings.provider.sharedTextProvider {
+                Toggle("Use \(textProvider.displayName) text API key", isOn: $viewModel.imageGenSettings.useSharedAPIKey)
+                    .font(.system(size: 12))
+                    .onChange(of: viewModel.imageGenSettings.useSharedAPIKey) { _, _ in
                         viewModel.saveConfiguration()
                     }
-                    .controlSize(.small)
+                if viewModel.imageGenSettings.useSharedAPIKey {
+                    Text("Using the same API key from your \(textProvider.displayName) text provider above.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 20)
+                }
+            }
+
+            // API Key — always show when not using shared key
+            if !viewModel.imageGenSettings.useSharedAPIKey || viewModel.imageGenSettings.provider.sharedTextProvider == nil {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Image API Key")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+
+                    HStack(spacing: 8) {
+                        Group {
+                            if viewModel.showImageGenAPIKey {
+                                TextField("Enter API key", text: $viewModel.imageGenAPIKey)
+                            } else {
+                                SecureField("Enter API key", text: $viewModel.imageGenAPIKey)
+                            }
+                        }
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 300)
+
+                        Button(action: { viewModel.showImageGenAPIKey.toggle() }) {
+                            Image(systemName: viewModel.showImageGenAPIKey ? "eye.slash" : "eye")
+                        }
+                        .buttonStyle(.borderless)
+
+                        Button("Save Key") {
+                            viewModel.saveConfiguration()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
                 }
             }
 
             // Model
             VStack(alignment: .leading, spacing: 6) {
-                Text("Model")
+                Text("Image Model")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.secondary)
 
                 HStack {
-                    Picker("Model", selection: $viewModel.imageGenSettings.model) {
-                        ForEach(viewModel.imageGenSettings.provider.defaultModels, id: \.self) { model in
-                            Text(model).tag(model)
+                    if !viewModel.imageGenSettings.provider.defaultModels.isEmpty {
+                        Picker("Model", selection: $viewModel.imageGenSettings.model) {
+                            ForEach(viewModel.imageGenSettings.provider.defaultModels, id: \.self) { model in
+                                Text(model).tag(model)
+                            }
                         }
+                        .labelsHidden()
+                        .fixedSize()
                     }
-                    .labelsHidden()
-                    .fixedSize()
 
-                    TextField("or enter model name", text: $viewModel.imageGenSettings.model)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 200)
+                    if viewModel.advancedMode {
+                        TextField("or enter model name", text: $viewModel.imageGenSettings.model)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 200)
+                    }
+                }
+                .onChange(of: viewModel.imageGenSettings.model) { _, _ in
+                    viewModel.saveConfiguration()
                 }
             }
 
-            // Base URL (for custom)
+            // Base URL (for custom provider)
             if viewModel.imageGenSettings.provider == .custom {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Base URL")
@@ -137,7 +169,35 @@ struct ImageGenerationSettingsView: View {
         }
     }
 
-    // MARK: - Image Options
+    // MARK: - Display
+
+    private var displaySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Display")
+                .font(.headline)
+
+            Text("How images appear in the conversation.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 16) {
+                Text("Image Size in Chat")
+                    .font(.system(size: 12))
+                Picker("Display Size", selection: $viewModel.imageGenSettings.displaySize) {
+                    ForEach(ImageDisplaySize.allCases) { size in
+                        Text(size.displayName).tag(size)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+            .onChange(of: viewModel.imageGenSettings.displaySize) { _, _ in
+                viewModel.saveConfiguration()
+            }
+        }
+    }
+
+    // MARK: - Image Options (Advanced)
 
     private var imageOptionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -146,7 +206,7 @@ struct ImageGenerationSettingsView: View {
 
             HStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Size")
+                    Text("Output Size")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                     Picker("Size", selection: $viewModel.imageGenSettings.imageSize) {
@@ -180,7 +240,7 @@ struct ImageGenerationSettingsView: View {
         }
     }
 
-    // MARK: - Trigger Mode
+    // MARK: - Trigger Mode (Advanced)
 
     private var triggerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -198,13 +258,11 @@ struct ImageGenerationSettingsView: View {
                 viewModel.saveConfiguration()
             }
 
-            switch viewModel.imageGenSettings.triggerMode {
-            case .manual:
-                Text("Images are only generated when you click the camera button in the chat toolbar.")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+            Text(viewModel.imageGenSettings.triggerMode.description)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
 
-            case .everyNMessages:
+            if viewModel.imageGenSettings.triggerMode == .everyNMessages {
                 HStack {
                     Text("Generate image every")
                         .font(.system(size: 12))
@@ -219,16 +277,11 @@ struct ImageGenerationSettingsView: View {
                 .onChange(of: viewModel.imageGenSettings.messageInterval) { _, _ in
                     viewModel.saveConfiguration()
                 }
-
-            case .injectedPrompt:
-                Text("The LLM will decide when to generate images by including a [GENERATE_IMAGE] tag in its responses. You can customize the injection prompt below.")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
             }
         }
     }
 
-    // MARK: - Prompt Templates
+    // MARK: - Prompt Templates (Advanced)
 
     private var promptSection: some View {
         VStack(alignment: .leading, spacing: 12) {

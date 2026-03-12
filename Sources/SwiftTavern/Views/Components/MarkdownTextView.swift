@@ -230,17 +230,81 @@ struct MarkdownTextView: View {
         return AttributedString(text)
     }
 
+    // MARK: - Text Category Detection
+
+    /// Text category for coloring purposes
+    private enum TextCategory {
+        case dialogue   // "double quotes"
+        case thinking   // (parentheses)
+        case action     // *asterisks* (handled via italic emphasis)
+        case narrative  // everything else
+    }
+
+    /// Build a per-character category map for coloring
+    /// Priority: dialogue > thinking > narrative (action is handled via emphasis detection)
+    private func buildCategoryMap(for text: String) -> [TextCategory] {
+        let chars = Array(text)
+        var map = [TextCategory](repeating: .narrative, count: chars.count)
+        var i = 0
+
+        while i < chars.count {
+            // Detect "double-quoted dialogue"
+            if chars[i] == "\"" {
+                let start = i
+                i += 1
+                while i < chars.count && chars[i] != "\"" {
+                    i += 1
+                }
+                if i < chars.count {
+                    // Mark the entire quoted region including the quote marks
+                    for j in start...i {
+                        map[j] = .dialogue
+                    }
+                    i += 1
+                }
+                continue
+            }
+
+            // Detect (parenthesized thinking/OOC)
+            if chars[i] == "(" {
+                let start = i
+                i += 1
+                var depth = 1
+                while i < chars.count && depth > 0 {
+                    if chars[i] == "(" { depth += 1 }
+                    else if chars[i] == ")" { depth -= 1 }
+                    i += 1
+                }
+                // Only color if we found a matching close paren
+                if depth == 0 {
+                    for j in start..<i {
+                        // Don't override dialogue inside parens
+                        if map[j] == .narrative {
+                            map[j] = .thinking
+                        }
+                    }
+                }
+                continue
+            }
+
+            i += 1
+        }
+
+        return map
+    }
+
     /// Parse inline markdown then apply chat style colors per character segment.
     ///
     /// Color priority (matches SillyTavern behavior):
     /// - Quoted text `"..."` always gets dialogue color, even inside `*asterisks*`
-    /// - Italic text outside quotes gets action/emote color
-    /// - Bold text keeps its contextual color (dialogue if quoted, narrative otherwise)
+    /// - Parenthesized text `(...)` gets thinking color
+    /// - Italic text outside quotes/parens gets action/emote color
+    /// - Bold text keeps its contextual color
     /// - All other text gets narrative color
     private func styledInline(_ text: String, style: ChatStyle, fontSizeOverride: CGFloat? = nil, bold: Bool = false) -> AttributedString {
         var attributed = parseInlineMarkdown(text)
         let plainText = String(attributed.characters)
-        let colorMap = buildColorMap(for: plainText)
+        let categoryMap = buildCategoryMap(for: plainText)
 
         // Collect run info first (ranges and emphasis/strong status)
         struct RunInfo {
@@ -258,20 +322,20 @@ struct MarkdownTextView: View {
             runs.append(RunInfo(range: run.range, length: len, hasEmphasis: emphasis, hasStrong: strong))
         }
 
-        // Apply colors by splitting every run at quote boundaries
+        // Apply colors by splitting every run at category boundaries
         var charOffset = 0
         for runInfo in runs {
             let runStart = charOffset
             let runEnd = charOffset + runInfo.length
 
-            // Split this run into segments where quote status changes
+            // Split this run into segments where category changes
             var segStart = runStart
             while segStart < runEnd {
-                let isQuoted = segStart < colorMap.count && colorMap[segStart]
+                let category: TextCategory = segStart < categoryMap.count ? categoryMap[segStart] : .narrative
                 var segEnd = segStart + 1
                 while segEnd < runEnd {
-                    let nextIsQuoted = segEnd < colorMap.count && colorMap[segEnd]
-                    if nextIsQuoted != isQuoted { break }
+                    let nextCategory: TextCategory = segEnd < categoryMap.count ? categoryMap[segEnd] : .narrative
+                    if nextCategory != category { break }
                     segEnd += 1
                 }
 
@@ -280,14 +344,20 @@ struct MarkdownTextView: View {
                 let segEndIdx = attributed.characters.index(runInfo.range.lowerBound, offsetBy: segEnd - charOffset)
                 let segRange = segStartIdx..<segEndIdx
 
-                // Color priority: quoted text always gets dialogue color,
-                // italic non-quoted gets action color, everything else narrative
-                if isQuoted {
+                // Apply color based on category, with italic override for actions
+                switch category {
+                case .dialogue:
                     attributed[segRange].foregroundColor = style.quotedTextColor.color
-                } else if runInfo.hasEmphasis {
+                case .thinking:
+                    attributed[segRange].foregroundColor = style.thinkingColor.color
+                case .action:
                     attributed[segRange].foregroundColor = style.italicActionColor.color
-                } else {
-                    attributed[segRange].foregroundColor = style.narrativeColor.color
+                case .narrative:
+                    if runInfo.hasEmphasis {
+                        attributed[segRange].foregroundColor = style.italicActionColor.color
+                    } else {
+                        attributed[segRange].foregroundColor = style.narrativeColor.color
+                    }
                 }
 
                 segStart = segEnd
@@ -307,33 +377,6 @@ struct MarkdownTextView: View {
 
         return attributed
     }
-
-    /// Build a per-character map marking which characters are inside "quotes"
-    private func buildColorMap(for text: String) -> [Bool] {
-        var map = [Bool](repeating: false, count: text.count)
-        let chars = Array(text)
-        var i = 0
-
-        while i < chars.count {
-            if chars[i] == "\"" {
-                let start = i
-                i += 1
-                while i < chars.count && chars[i] != "\"" {
-                    i += 1
-                }
-                if i < chars.count {
-                    for j in start...i {
-                        map[j] = true
-                    }
-                    i += 1
-                }
-            } else {
-                i += 1
-            }
-        }
-
-        return map
-    }
 }
 
 #Preview {
@@ -342,12 +385,17 @@ struct MarkdownTextView: View {
             MarkdownTextView(text: "**Bold** and *italic* and `code`\n\nA paragraph")
             Divider()
             MarkdownTextView(
-                text: "*She walks over slowly.* \"Hello there!\" She waves her hand.",
+                text: "She walks over slowly. \"Hello there!\" *I hope she doesn't notice me staring.*",
                 chatStyle: .default
             )
             Divider()
             MarkdownTextView(
-                text: "*\"Hello there!\"* she said, *leaning against the wall.*",
+                text: "*\"Hello there!\"* she said, leaning against the wall.",
+                chatStyle: .default
+            )
+            Divider()
+            MarkdownTextView(
+                text: "*I wonder what she wants...* \"Oh, hey!\" He waves awkwardly. (OOC: great scene!)",
                 chatStyle: .default
             )
             Divider()

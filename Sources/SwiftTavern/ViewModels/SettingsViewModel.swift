@@ -180,13 +180,12 @@ final class SettingsViewModel {
     var showingResetPresetsConfirmation = false
 
     var visibleSections: [SettingsSection] {
-        var sections: [SettingsSection] = [.api, .general, .chat]
+        var sections: [SettingsSection] = [.api]
+        sections.append(contentsOf: [.general, .chat])
         if advancedMode {
             sections.append(.presets)
         }
-        sections.append(.experimental)
-        sections.append(.data)
-        sections.append(.reset)
+        sections.append(contentsOf: [.experimental, .data, .reset])
         return sections
     }
 
@@ -341,9 +340,24 @@ final class SettingsViewModel {
 
     // MARK: - Image Generation Test
 
+    /// Resolve the effective API key for image generation,
+    /// checking shared text provider key if enabled.
+    func resolvedImageGenAPIKey() -> String {
+        guard let appState else { return imageGenAPIKey }
+        // If using shared key and provider has a matching text provider, use that key
+        if imageGenSettings.useSharedAPIKey,
+           let textProvider = imageGenSettings.provider.sharedTextProvider {
+            let sharedKey = appState.settings.apiKeys[textProvider.rawValue] ?? ""
+            if !sharedKey.isEmpty { return sharedKey }
+        }
+        // Fall back to dedicated image gen key
+        return imageGenAPIKey
+    }
+
     func testImageGenConnection() {
         guard let appState else { return }
-        guard !imageGenAPIKey.isEmpty else {
+        let effectiveKey = resolvedImageGenAPIKey()
+        guard !effectiveKey.isEmpty else {
             imageGenTestResult = "Enter an API key first"
             return
         }
@@ -357,7 +371,7 @@ final class SettingsViewModel {
                 let imageData = try await service.generateImage(
                     prompt: "A simple test image: a red circle on a white background",
                     settings: imageGenSettings,
-                    apiKey: imageGenAPIKey
+                    apiKey: effectiveKey
                 )
 
                 await MainActor.run {

@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// Sheet for editing chat message text styling (colors, font size)
+/// Organized by punctuation marker so users choose what each formatting type looks like
 struct ChatStyleEditorView: View {
     @Binding var chatStyle: ChatStyle
     var hasConversationOverride: Bool = false
@@ -66,91 +67,79 @@ struct ChatStyleEditorView: View {
 
                     Divider()
 
-                    // Quoted text color
-                    colorPicker(
-                        title: "Quoted Text Color",
-                        description: "Color for text in \"double quotes\" (dialogue)",
+                    Text("Text Colors by Formatting")
+                        .font(.headline)
+
+                    Text("Pick a color for each type of punctuation. Use this to style speech, actions, thoughts, or narration however you like.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    // "Quoted text"
+                    markerColorPicker(
+                        marker: "\"Double Quotes\"",
+                        example: "\"Like this.\"",
+                        hint: "Speech / dialogue",
                         color: $chatStyle.quotedTextColor
                     )
 
-                    // Action text color
-                    colorPicker(
-                        title: "Action/Emote Color",
-                        description: "Color for text in *asterisks* (actions, emotes)",
+                    // *Italic text*
+                    markerColorPicker(
+                        marker: "*Asterisks* (Italic)",
+                        example: "*Like this.*",
+                        hint: "Internal thinking / inner monologue",
                         color: $chatStyle.italicActionColor
                     )
 
-                    // Narrative text color
-                    colorPicker(
-                        title: "Narrative Text Color",
-                        description: "Color for regular narrative text",
+                    // (Parenthesized text)
+                    markerColorPicker(
+                        marker: "(Parentheses)",
+                        example: "(Like this.)",
+                        hint: "OOC or side notes",
+                        color: $chatStyle.thinkingColor
+                    )
+
+                    // Plain text
+                    markerColorPicker(
+                        marker: "Plain Text",
+                        example: "Like this.",
+                        hint: "Narration and actions",
                         color: $chatStyle.narrativeColor
                     )
 
                     Divider()
 
-                    // Preview
+                    // Live preview
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Preview")
                             .font(.headline)
 
                         VStack(alignment: .leading, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Dialogue (Quoted Text)")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.secondary)
-                                MarkdownTextView(
-                                    text: "\"Hey, I was wondering when you'd show up.\"",
-                                    chatStyle: chatStyle
-                                )
-                                .font(.system(size: chatStyle.fontSize))
-                            }
+                            previewRow(
+                                label: "Speech (\"Quotes\")",
+                                text: "\"Hey, I was wondering when you'd show up.\""
+                            )
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Actions (Italic/Emote)")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.secondary)
-                                MarkdownTextView(
-                                    text: "*She leans against the doorframe, arms crossed.*",
-                                    chatStyle: chatStyle
-                                )
-                                .font(.system(size: chatStyle.fontSize))
-                            }
+                            previewRow(
+                                label: "Thinking (*Asterisks*)",
+                                text: "*I wonder if she noticed me staring...*"
+                            )
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Narrative")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.secondary)
-                                MarkdownTextView(
-                                    text: "She smiles warmly and steps aside to let you in.",
-                                    chatStyle: chatStyle
-                                )
-                                .font(.system(size: chatStyle.fontSize))
-                            }
+                            previewRow(
+                                label: "OOC ((Parentheses))",
+                                text: "(Let's move to a different scene.)"
+                            )
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Italic Speech (*\"...\"*)")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.secondary)
-                                MarkdownTextView(
-                                    text: "*\"I was wondering when you'd show up,\"* *she says with a grin.*",
-                                    chatStyle: chatStyle
-                                )
-                                .font(.system(size: chatStyle.fontSize))
-                            }
+                            previewRow(
+                                label: "Narration & Actions (Plain)",
+                                text: "She leans against the doorframe, arms crossed, and smiles warmly."
+                            )
 
                             Divider()
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Combined Example")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.secondary)
-                                MarkdownTextView(
-                                    text: "*She leans against the doorframe, arms crossed.* \"Hey, I was wondering when you'd show up.\" She smiles warmly and steps aside to let you in.",
-                                    chatStyle: chatStyle
-                                )
-                                .font(.system(size: chatStyle.fontSize))
-                            }
+                            previewRow(
+                                label: "Combined",
+                                text: "She leans against the doorframe. \"Hey there.\" *I hope I look cool.* (OOC: nice scene!) She steps aside to let you in."
+                            )
                         }
                         .padding(10)
                         .background(Color(.controlBackgroundColor))
@@ -171,36 +160,65 @@ struct ChatStyleEditorView: View {
                 .padding(20)
             }
         }
-        .frame(width: 500, height: 580)
+        .frame(width: 520, height: 700)
     }
 
+    // MARK: - Marker Color Picker
+
     @ViewBuilder
-    private func colorPicker(title: String, description: String, color: Binding<CodableColor>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 12, weight: .medium))
-                    Text(description)
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                ColorPicker("", selection: Binding(
-                    get: { Color(red: color.wrappedValue.r, green: color.wrappedValue.g, blue: color.wrappedValue.b, opacity: color.wrappedValue.a) },
-                    set: { newColor in
-                        if let components = NSColor(newColor).usingColorSpace(.sRGB) {
-                            color.wrappedValue = CodableColor(
-                                r: Double(components.redComponent),
-                                g: Double(components.greenComponent),
-                                b: Double(components.blueComponent),
-                                a: Double(components.alphaComponent)
-                            )
-                        }
-                    }
-                ))
-                .labelsHidden()
+    private func markerColorPicker(
+        marker: String,
+        example: String,
+        hint: String,
+        color: Binding<CodableColor>
+    ) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(marker)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(hint)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
             }
+            Spacer()
+            // Inline mini-preview swatch
+            Text(example)
+                .font(.system(size: 11))
+                .foregroundColor(color.wrappedValue.color)
+                .lineLimit(1)
+            ColorPicker("", selection: Binding(
+                get: {
+                    Color(red: color.wrappedValue.r, green: color.wrappedValue.g,
+                          blue: color.wrappedValue.b, opacity: color.wrappedValue.a)
+                },
+                set: { newColor in
+                    if let components = NSColor(newColor).usingColorSpace(.sRGB) {
+                        color.wrappedValue = CodableColor(
+                            r: Double(components.redComponent),
+                            g: Double(components.greenComponent),
+                            b: Double(components.blueComponent),
+                            a: Double(components.alphaComponent)
+                        )
+                    }
+                }
+            ))
+            .labelsHidden()
+        }
+    }
+
+    // MARK: - Preview Row
+
+    @ViewBuilder
+    private func previewRow(label: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.secondary)
+            MarkdownTextView(
+                text: text,
+                chatStyle: chatStyle
+            )
+            .font(.system(size: chatStyle.fontSize))
         }
     }
 }

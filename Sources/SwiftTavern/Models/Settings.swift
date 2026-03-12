@@ -228,84 +228,83 @@ enum APIType: String, Codable, CaseIterable, Identifiable {
     var defaultModels: [String] {
         switch self {
         case .openai: return [
+            // GPT-5 family
+            "gpt-5.4", "gpt-5.4-pro",
             // GPT-4o family
-            "gpt-4o", "gpt-4o-2024-11-20", "gpt-4o-2024-08-06", "gpt-4o-2024-05-13",
-            "gpt-4o-mini", "gpt-4o-mini-2024-07-18",
-            "gpt-4o-audio-preview", "gpt-4o-audio-preview-2024-12-17",
+            "gpt-4o", "gpt-4o-mini",
+            // GPT-4.5
+            "gpt-4.5-preview",
             // GPT-4.1 family
             "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
             // o-series reasoning
-            "o1", "o1-2024-12-17", "o1-mini", "o1-mini-2024-09-12", "o1-preview", "o1-preview-2024-09-12",
-            "o3", "o3-mini", "o3-mini-2025-01-31", "o4-mini",
+            "o1", "o1-pro", "o3", "o3-pro", "o3-mini", "o4-mini",
             // GPT-4
-            "gpt-4-turbo", "gpt-4-turbo-2024-04-09", "gpt-4-turbo-preview", "gpt-4-0125-preview", "gpt-4-1106-preview",
-            "gpt-4", "gpt-4-0613",
+            "gpt-4-turbo", "gpt-4",
             // GPT-3.5
-            "gpt-3.5-turbo", "gpt-3.5-turbo-0125", "gpt-3.5-turbo-1106",
+            "gpt-3.5-turbo",
             // Chatgpt
             "chatgpt-4o-latest",
         ]
         case .claude: return [
-            // Claude 4 family
+            // Claude 4.6 family
             "claude-opus-4-6", "claude-sonnet-4-6",
+            // Claude 4.5
+            "claude-opus-4-5-20251124", "claude-sonnet-4-5-20250514", "claude-haiku-4-5-20251001",
             // Claude 3.5 family
-            "claude-3-5-sonnet-20241022", "claude-3-5-sonnet-20240620", "claude-3-5-haiku-20241022",
+            "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022",
             // Claude 3 family
-            "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307",
-            // Claude 4.5 / Haiku
-            "claude-haiku-4-5-20251001",
+            "claude-3-opus-20240229", "claude-3-haiku-20240307",
         ]
         case .gemini: return [
+            // Gemini 3.1
+            "gemini-3.1-pro-preview", "gemini-3.1-flash-lite",
             // Gemini 2.5
-            "gemini-2.5-pro-preview-06-05", "gemini-2.5-flash-preview-05-20",
+            "gemini-2.5-pro", "gemini-2.5-flash",
             // Gemini 2.0
-            "gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite", "gemini-2.0-flash-lite-001",
-            "gemini-2.0-flash-thinking-exp", "gemini-2.0-pro-exp",
+            "gemini-2.0-flash", "gemini-2.0-flash-lite",
             // Gemini 1.5
-            "gemini-1.5-pro", "gemini-1.5-pro-001", "gemini-1.5-pro-002",
-            "gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-flash-002",
-            "gemini-1.5-flash-8b", "gemini-1.5-flash-8b-001",
+            "gemini-1.5-pro", "gemini-1.5-flash",
         ]
         case .ollama: return [
             // Meta Llama
-            "llama3.3", "llama3.2", "llama3.1", "llama3.1:70b", "llama3.1:405b", "llama3",
+            "llama3.3", "llama3.2", "llama3.1", "llama3.1:70b", "llama3.1:405b",
             // Mistral
             "mistral", "mistral-nemo", "mistral-large", "mistral-small", "mixtral", "mixtral:8x22b",
             // Qwen
             "qwen2.5", "qwen2.5:72b", "qwen2.5-coder", "qwen2.5-coder:32b", "qwq",
             // Google
-            "gemma2", "gemma2:27b",
+            "gemma3", "gemma3:12b", "gemma2", "gemma2:27b",
             // DeepSeek
-            "deepseek-r1", "deepseek-r1:70b", "deepseek-v2.5",
+            "deepseek-r1", "deepseek-r1:70b", "deepseek-coder-v2",
             // Microsoft
             "phi4", "phi3", "phi3:medium",
             // Coding
             "codellama", "codellama:70b", "starcoder2",
             // Other
-            "command-r", "command-r-plus", "solar", "nous-hermes2", "dolphin-mixtral", "vicuna", "neural-chat",
+            "command-r", "command-r-plus", "nous-hermes2", "dolphin-mixtral",
         ]
         case .novelai: return [
-            "kayra-v2", "kayra-v1", "clio-v1", "llama-3-erato-v1",
+            "llama-3-erato-v1", "kayra-v1", "clio-v1",
         ]
         case .openrouter: return [
             // OpenAI
-            "openai/gpt-4o", "openai/gpt-4o-mini", "openai/gpt-4-turbo", "openai/o1", "openai/o1-mini", "openai/o3-mini",
+            "openai/gpt-5.4", "openai/gpt-4o", "openai/gpt-4o-mini", "openai/o3", "openai/o3-mini", "openai/o4-mini",
             // Anthropic
-            "anthropic/claude-opus-4", "anthropic/claude-sonnet-4", "anthropic/claude-3.5-sonnet", "anthropic/claude-3-haiku",
+            "anthropic/claude-opus-4-6", "anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-4-5",
             // Google
-            "google/gemini-2.5-pro-preview", "google/gemini-2.5-flash-preview", "google/gemini-2.0-flash-001", "google/gemini-2.0-pro-exp", "google/gemini-pro-1.5", "google/gemini-flash-1.5",
+            "google/gemini-2.5-pro", "google/gemini-2.5-flash", "google/gemini-2.0-flash",
             // Meta Llama
-            "meta-llama/llama-4-maverick", "meta-llama/llama-4-scout", "meta-llama/llama-3.3-70b-instruct", "meta-llama/llama-3.1-405b-instruct", "meta-llama/llama-3.1-70b-instruct", "meta-llama/llama-3.1-8b-instruct",
+            "meta-llama/llama-4-maverick", "meta-llama/llama-4-scout", "meta-llama/llama-3.3-70b-instruct", "meta-llama/llama-3.1-405b-instruct", "meta-llama/llama-3.1-70b-instruct",
             // Mistral
-            "mistralai/mistral-large-2411", "mistralai/mistral-medium", "mistralai/mistral-small-3.1-24b-instruct", "mistralai/mixtral-8x22b-instruct", "mistralai/mixtral-8x7b-instruct",
+            "mistralai/mistral-large", "mistralai/mistral-small-3.1-24b-instruct", "mistralai/mixtral-8x22b-instruct",
             // DeepSeek
-            "deepseek/deepseek-chat-v3-0324", "deepseek/deepseek-r1",
+            "deepseek/deepseek-v3.2", "deepseek/deepseek-r1",
             // Qwen
             "qwen/qwen-2.5-72b-instruct", "qwen/qwen-2.5-coder-32b-instruct", "qwen/qwq-32b",
             // Cohere
             "cohere/command-r-plus", "cohere/command-r",
             // xAI
-            "x-ai/grok-2-1212", "x-ai/grok-3-mini-beta",
+            "x-ai/grok-code-fast-1", "x-ai/grok-3-mini-beta",
             // Other
             "nousresearch/hermes-3-llama-3.1-405b", "microsoft/phi-4",
         ]

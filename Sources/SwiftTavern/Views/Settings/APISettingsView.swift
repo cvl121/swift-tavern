@@ -1,14 +1,28 @@
 import SwiftUI
 
-/// API configuration settings
+/// Text API configuration settings — for chat/conversation LLM providers
 struct APISettingsView: View {
     @Bindable var viewModel: SettingsViewModel
 
+    /// Text-capable API providers (excludes image-only providers)
+    private var textProviders: [APIType] {
+        APIType.allCases.filter { $0 != .novelai }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            Text("Text API")
+                .font(.title2.bold())
+
+            Text("Choose the AI provider for chat conversations and text generation.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+
+            Divider()
+
             // API Provider picker
             Picker("API Provider", selection: $viewModel.selectedAPI) {
-                ForEach(APIType.allCases) { api in
+                ForEach(textProviders) { api in
                     Text(api.displayName).tag(api)
                 }
             }

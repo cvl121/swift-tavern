@@ -10,9 +10,12 @@ struct ChatInputView: View {
     var characterName: String?
     var tokenCount: Int = 0
     var fontSize: CGFloat = 13
+    var imageGenEnabled: Bool = false
+    var isGeneratingImage: Bool = false
     var onHeightChanged: (() -> Void)?
     let onSend: () -> Void
     let onStop: () -> Void
+    var onGenerateImage: (() -> Void)?
 
     private let minInputHeight: CGFloat = 32
     private let maxInputHeight: CGFloat = 200
@@ -80,20 +83,33 @@ struct ChatInputView: View {
                     .background(Color(.controlBackgroundColor))
                     .cornerRadius(8)
 
-                Button(action: {
-                    if isGenerating {
-                        onStop()
-                    } else if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        onSend()
+                VStack(spacing: 6) {
+                    if imageGenEnabled {
+                        Button(action: { onGenerateImage?() }) {
+                            Image(systemName: isGeneratingImage ? "hourglass" : "photo")
+                                .font(.system(size: 16))
+                                .foregroundColor(isGeneratingImage ? .secondary : .accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isGeneratingImage || isGenerating)
+                        .help("Generate an image of the current scene")
                     }
-                }) {
-                    Image(systemName: isGenerating ? "stop.circle.fill" : "arrow.up.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(isGenerating ? .red : .accentColor)
+
+                    Button(action: {
+                        if isGenerating {
+                            onStop()
+                        } else if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            onSend()
+                        }
+                    }) {
+                        Image(systemName: isGenerating ? "stop.circle.fill" : "arrow.up.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(isGenerating ? .red : .accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .help(isGenerating ? "Stop generating" : (sendOnEnter ? "Send message (Enter)" : "Send message (Cmd+Return)"))
+                    .animation(.easeInOut(duration: 0.15), value: isGenerating)
                 }
-                .buttonStyle(.plain)
-                .help(isGenerating ? "Stop generating" : (sendOnEnter ? "Send message (Enter)" : "Send message (Cmd+Return)"))
-                .animation(.easeInOut(duration: 0.15), value: isGenerating)
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 12)

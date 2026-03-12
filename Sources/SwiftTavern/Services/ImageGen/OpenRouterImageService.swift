@@ -1,6 +1,9 @@
 import Foundation
 
-/// OpenRouter image generation service (uses OpenAI-compatible format)
+/// OpenRouter image generation service
+/// Uses chat completions endpoint with image-capable models.
+/// Image models return images in choices[0].message.images array
+/// as data URIs (data:image/png;base64,...).
 struct OpenRouterImageService: ImageGenerationService {
     func generateImage(
         prompt: String,
@@ -8,7 +11,7 @@ struct OpenRouterImageService: ImageGenerationService {
         apiKey: String
     ) async throws -> Data {
         let baseURL = settings.baseURL ?? "https://openrouter.ai/api"
-        guard let url = URL(string: "\(baseURL)/v1/images/generations") else {
+        guard let url = URL(string: "\(baseURL)/v1/chat/completions") else {
             throw ImageGenError.invalidURL(baseURL)
         }
 
@@ -21,10 +24,9 @@ struct OpenRouterImageService: ImageGenerationService {
 
         let body: [String: Any] = [
             "model": settings.model,
-            "prompt": prompt,
-            "n": 1,
-            "response_format": "b64_json",
-            "size": settings.imageSize.rawValue,
+            "messages": [
+                ["role": "user", "content": prompt]
+            ],
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -40,11 +42,24 @@ struct OpenRouterImageService: ImageGenerationService {
             throw ImageGenError.invalidResponse(statusCode: httpResponse.statusCode, body: body)
         }
 
+        // Parse: choices[0].message.images[0].image_url.url = "data:image/png;base64,..."
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let dataArray = json["data"] as? [[String: Any]],
-              let first = dataArray.first,
-              let b64String = first["b64_json"] as? String,
-              let imageData = Data(base64Encoded: b64String) else {
+              let choices = json["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let images = message["images"] as? [[String: Any]],
+              let firstImage = images.first,
+              let imageURL = firstImage["image_url"] as? [String: Any],
+              let dataURI = imageURL["url"] as? String else {
+            throw ImageGenError.noImageData
+        }
+
+        // Extract base64 from data URI: "data:image/png;base64,<base64data>"
+        guard let commaIndex = dataURI.firstIndex(of: ",") else {
+            throw ImageGenError.noImageData
+        }
+
+        let base64String = String(dataURI[dataURI.index(after: commaIndex)...])
+        guard let imageData = Data(base64Encoded: base64String) else {
             throw ImageGenError.noImageData
         }
 

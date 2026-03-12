@@ -19,6 +19,8 @@ struct MessageBubbleView: View {
     var chatStyle: ChatStyle?
     /// Base directory for resolving image URLs
     var imageBasePath: URL?
+    /// How large images appear in the chat
+    var imageDisplaySize: ImageDisplaySize = .medium
 
     var isFocused: Bool = false
 
@@ -96,7 +98,10 @@ struct MessageBubbleView: View {
                                 Image(nsImage: nsImage)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
-                                    .frame(maxWidth: 400, maxHeight: 400)
+                                    .frame(
+                                        maxWidth: imageDisplaySize.maxWidth,
+                                        maxHeight: imageDisplaySize.maxHeight
+                                    )
                                     .cornerRadius(8)
                                     .contextMenu {
                                         Button("Copy Image") {

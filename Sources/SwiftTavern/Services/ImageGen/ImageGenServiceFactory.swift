@@ -10,6 +10,8 @@ enum ImageGenServiceFactory {
             return StabilityImageService()
         case .openrouter:
             return OpenRouterImageService()
+        case .novelai:
+            return NovelAIImageService()
         case .custom:
             // Custom provider uses DALL-E compatible format
             return DalleImageService()
