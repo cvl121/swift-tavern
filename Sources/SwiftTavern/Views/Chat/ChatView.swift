@@ -10,7 +10,8 @@ struct ChatView: View {
     @State private var bottomAnchorVisible = true
     @State private var lastStreamScrollTime: Date = .distantPast
     @State private var hoveredHeaderButton: String?
-    @State private var firstVisibleMessageID: String?
+    /// Set of currently visible message IDs, used to track scroll position
+    @State private var visibleMessageIDs: Set<String> = []
     @State private var cachedUserAvatarData: Data?
     @State private var cachedUserAvatarKey: String = ""
 
@@ -66,10 +67,10 @@ struct ChatView: View {
                             messageBubble(index: offset, message: message)
                                 .id(message.id)
                                 .onAppear {
-                                    // Track the first (topmost) visible message for scroll restoration
-                                    if firstVisibleMessageID == nil {
-                                        firstVisibleMessageID = message.id
-                                    }
+                                    visibleMessageIDs.insert(message.id)
+                                }
+                                .onDisappear {
+                                    visibleMessageIDs.remove(message.id)
                                 }
                         }
 
@@ -198,12 +199,12 @@ struct ChatView: View {
                     } else {
                         scrollToBottom(proxy: proxy, animated: false)
                     }
-                    firstVisibleMessageID = nil
                 }
                 .onDisappear {
-                    // Save scroll position when navigating away
-                    chatVM.saveScrollPosition(visibleMessageID: firstVisibleMessageID)
-                    firstVisibleMessageID = nil
+                    // Save the topmost visible message for scroll restoration
+                    let topmost = topmostVisibleMessageID()
+                    chatVM.saveScrollPosition(visibleMessageID: topmost)
+                    visibleMessageIDs.removeAll()
                 }
                 .onChange(of: chatVM.messages.count) {
                     if chatVM.autoScrollEnabled {
@@ -424,6 +425,18 @@ struct ChatView: View {
         } message: {
             Text("Are you sure you want to delete this message? This cannot be undone.")
         }
+    }
+
+    /// Find the topmost visible message by matching against the ordered message list
+    private func topmostVisibleMessageID() -> String? {
+        guard !visibleMessageIDs.isEmpty else { return nil }
+        // Walk messages in order and return the first one that is visible
+        for item in chatVM.indexedDisplayMessages {
+            if visibleMessageIDs.contains(item.element.id) {
+                return item.element.id
+            }
+        }
+        return visibleMessageIDs.first
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool) {

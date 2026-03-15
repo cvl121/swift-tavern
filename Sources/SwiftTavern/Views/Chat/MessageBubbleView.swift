@@ -90,7 +90,6 @@ struct MessageBubbleView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         MarkdownTextView(text: message.mes, chatStyle: chatStyle)
                             .font(.system(size: chatStyle?.fontSize ?? 13))
-                            .textSelection(.enabled)
 
                         // Generated image
                         if message.hasImage, let imageURL = message.imageURL,
