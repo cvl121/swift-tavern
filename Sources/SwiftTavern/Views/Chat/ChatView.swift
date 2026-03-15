@@ -180,6 +180,11 @@ struct ChatView: View {
                     }
                     .padding(.vertical, 8)
                 }
+                .background(Color(.windowBackgroundColor))
+                .onTapGesture {
+                    // Clear text selection and unfocus input when tapping empty areas
+                    NSApp.keyWindow?.makeFirstResponder(nil)
+                }
                 .onAppear {
                     // Restore saved scroll position, or default to bottom
                     if let anchor = chatVM.savedScrollAnchor() {
