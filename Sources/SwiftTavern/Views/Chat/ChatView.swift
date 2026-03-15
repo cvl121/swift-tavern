@@ -67,10 +67,14 @@ struct ChatView: View {
                             messageBubble(index: offset, message: message)
                                 .id(message.id)
                                 .onAppear {
-                                    visibleMessageIDs.insert(message.id)
+                                    DispatchQueue.main.async {
+                                        visibleMessageIDs.insert(message.id)
+                                    }
                                 }
                                 .onDisappear {
-                                    visibleMessageIDs.remove(message.id)
+                                    DispatchQueue.main.async {
+                                        visibleMessageIDs.remove(message.id)
+                                    }
                                 }
                         }
 

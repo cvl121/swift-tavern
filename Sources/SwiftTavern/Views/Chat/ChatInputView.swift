@@ -19,8 +19,7 @@ struct ChatInputView: View {
 
     @FocusState private var isInputFocused: Bool
     @State private var dragStartHeight: CGFloat = 0
-    @State private var localHeight: CGFloat = 0
-    @State private var isDragging: Bool = false
+    @State private var displayHeight: CGFloat = 0
 
     private let minInputHeight: CGFloat = 32
     private let maxInputHeight: CGFloat = 200
@@ -46,16 +45,14 @@ struct ChatInputView: View {
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in
-                        if !isDragging {
-                            isDragging = true
-                            dragStartHeight = inputHeight
+                        if dragStartHeight == 0 {
+                            dragStartHeight = displayHeight
                         }
-                        localHeight = min(max(dragStartHeight - value.translation.height, minInputHeight), maxInputHeight)
+                        displayHeight = min(max(dragStartHeight - value.translation.height, minInputHeight), maxInputHeight)
                     }
                     .onEnded { _ in
-                        inputHeight = localHeight
-                        isDragging = false
                         dragStartHeight = 0
+                        inputHeight = displayHeight
                         onHeightChanged?()
                     }
             )
@@ -88,7 +85,7 @@ struct ChatInputView: View {
             HStack(alignment: .bottom, spacing: 8) {
                 TextEditor(text: $text)
                     .font(.system(size: fontSize))
-                    .frame(height: isDragging ? localHeight : inputHeight)
+                    .frame(height: displayHeight)
                     .scrollContentBackground(.hidden)
                     .padding(8)
                     .background(Color(.controlBackgroundColor))
@@ -128,6 +125,15 @@ struct ChatInputView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
             .padding(.top, 4)
+        }
+        .onAppear {
+            displayHeight = inputHeight
+        }
+        .onChange(of: inputHeight) { _, newValue in
+            // Sync from binding when changed externally (e.g. conversation switch)
+            if dragStartHeight == 0 {
+                displayHeight = newValue
+            }
         }
         .onKeyPress(.return, phases: .down) { keyPress in
             if isGenerating {
