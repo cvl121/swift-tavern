@@ -59,6 +59,21 @@ final class ChatViewModel {
     /// Saved scroll anchor per chat (maps chat filename → message ID to scroll to)
     private var savedScrollAnchors: [String: String] = [:]
 
+    /// Auto-scroll preference per chat (maps chat filename → enabled)
+    private var autoScrollPerChat: [String: Bool] = [:]
+
+    /// Whether auto-scroll is enabled for the current chat
+    var autoScrollEnabled: Bool {
+        get {
+            guard let filename = appState?.currentChat?.filename else { return true }
+            return autoScrollPerChat[filename] ?? true
+        }
+        set {
+            guard let filename = appState?.currentChat?.filename else { return }
+            autoScrollPerChat[filename] = newValue
+        }
+    }
+
     /// Save the current scroll position for the active chat
     func saveScrollPosition(visibleMessageID: String?) {
         guard let filename = appState?.currentChat?.filename,

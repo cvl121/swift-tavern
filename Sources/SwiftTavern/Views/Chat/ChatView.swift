@@ -7,7 +7,6 @@ struct ChatView: View {
     @Bindable var chatVM: ChatViewModel
 
     @State private var showingChatStyleEditor = false
-    @State private var autoScrollEnabled = true
     @State private var bottomAnchorVisible = true
     @State private var lastStreamScrollTime: Date = .distantPast
     @State private var hoveredHeaderButton: String?
@@ -168,7 +167,7 @@ struct ChatView: View {
                             .id("bottom")
                             .onAppear {
                                 bottomAnchorVisible = true
-                                autoScrollEnabled = true
+                                chatVM.autoScrollEnabled = true
                                 chatVM.clearScrollAnchor()
                             }
                             .onDisappear {
@@ -182,11 +181,11 @@ struct ChatView: View {
                                     // the user deliberately scrolled away
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                         if !bottomAnchorVisible && chatVM.isGenerating {
-                                            autoScrollEnabled = false
+                                            chatVM.autoScrollEnabled = false
                                         }
                                     }
                                 } else {
-                                    autoScrollEnabled = false
+                                    chatVM.autoScrollEnabled = false
                                 }
                             }
                     }
@@ -207,12 +206,12 @@ struct ChatView: View {
                     firstVisibleMessageID = nil
                 }
                 .onChange(of: chatVM.messages.count) {
-                    if autoScrollEnabled {
+                    if chatVM.autoScrollEnabled {
                         scrollToBottom(proxy: proxy, animated: true)
                     }
                 }
                 .onChange(of: chatVM.streamingText) {
-                    guard autoScrollEnabled else { return }
+                    guard chatVM.autoScrollEnabled else { return }
                     // Throttle scroll-to-bottom during streaming to avoid layout thrashing
                     let now = Date()
                     if now.timeIntervalSince(lastStreamScrollTime) > 0.15 {
@@ -221,9 +220,7 @@ struct ChatView: View {
                     }
                 }
                 .onChange(of: chatVM.isGenerating) { _, isGenerating in
-                    if !isGenerating {
-                        // Re-enable auto-scroll when generation completes
-                        autoScrollEnabled = true
+                    if !isGenerating && chatVM.autoScrollEnabled {
                         scrollToBottom(proxy: proxy, animated: true)
                     }
                 }
@@ -605,13 +602,13 @@ struct ChatView: View {
                 .help("Filter Bookmarked Messages")
 
                 Button(action: {
-                    autoScrollEnabled.toggle()
+                    chatVM.autoScrollEnabled.toggle()
                 }) {
-                    chatHeaderLabel("Auto-Scroll", icon: autoScrollEnabled ? "arrow.down.circle.fill" : "arrow.down.circle")
-                        .foregroundColor(autoScrollEnabled ? .accentColor : .secondary)
+                    chatHeaderLabel("Auto-Scroll", icon: chatVM.autoScrollEnabled ? "arrow.down.circle.fill" : "arrow.down.circle")
+                        .foregroundColor(chatVM.autoScrollEnabled ? .accentColor : .secondary)
                 }
-                .accessibilityLabel(autoScrollEnabled ? "Auto-scroll enabled" : "Auto-scroll disabled")
-                .help(autoScrollEnabled ? "Disable Auto-Scroll" : "Enable Auto-Scroll")
+                .accessibilityLabel(chatVM.autoScrollEnabled ? "Auto-scroll enabled" : "Auto-scroll disabled")
+                .help(chatVM.autoScrollEnabled ? "Disable Auto-Scroll" : "Enable Auto-Scroll")
 
                 Button(action: { showingChatStyleEditor = true }) {
                     chatHeaderLabel("Style", icon: "paintbrush")
