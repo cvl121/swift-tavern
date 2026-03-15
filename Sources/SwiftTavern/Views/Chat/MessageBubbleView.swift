@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Display a single chat message with avatar and context menu
+/// Display a single chat message with avatar and action buttons
 struct MessageBubbleView: View {
     let message: ChatMessage
     let avatarData: Data?
@@ -21,6 +21,8 @@ struct MessageBubbleView: View {
     var imageBasePath: URL?
     /// How large images appear in the chat
     var imageDisplaySize: ImageDisplaySize = .medium
+    /// Whether to show text labels next to action buttons
+    var showActionLabels: Bool = false
 
     var isFocused: Bool = false
 
@@ -77,6 +79,7 @@ struct MessageBubbleView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         MarkdownTextView(text: message.mes, chatStyle: chatStyle)
                             .font(.system(size: chatStyle?.fontSize ?? 13))
+                            .textSelection(.enabled)
 
                         // Generated image
                         if message.hasImage, let imageURL = message.imageURL,
@@ -91,18 +94,6 @@ struct MessageBubbleView: View {
                                         maxHeight: imageDisplaySize.maxHeight
                                     )
                                     .cornerRadius(8)
-                                    .contextMenu {
-                                        Button("Copy Image") {
-                                            NSPasteboard.general.clearContents()
-                                            NSPasteboard.general.writeObjects([nsImage])
-                                        }
-                                        if let prompt = message.imagePrompt {
-                                            Button("Copy Prompt") {
-                                                NSPasteboard.general.clearContents()
-                                                NSPasteboard.general.setString(prompt, forType: .string)
-                                            }
-                                        }
-                                    }
                             }
                         }
                     }
@@ -113,6 +104,9 @@ struct MessageBubbleView: View {
                                 ? Color.accentColor.opacity(0.08)
                                 : Color(.controlBackgroundColor).opacity(0.5))
                     )
+
+                    // Action buttons
+                    messageActionButtons
                 }
 
                 // Swipe arrows (greeting or response swipes)
@@ -160,32 +154,64 @@ struct MessageBubbleView: View {
             isFocused ? RoundedRectangle(cornerRadius: 4).stroke(Color.accentColor.opacity(0.3), lineWidth: 1).padding(2) : nil
         )
         .onHover { isHovered = $0 }
-        .opacity(isHovered ? 1.0 : 0.95)
         .contentShape(Rectangle())
-        .contextMenu {
-            Button("Copy") { onCopy() }
-            Button("Edit") { onEdit() }
-            if let onToggleBookmark {
-                Button(message.isBookmarked ? "Remove Bookmark" : "Bookmark") {
-                    onToggleBookmark()
-                }
-            }
-            if let onFork {
-                Button("Fork from Here") {
-                    onFork()
-                }
-            }
-            Divider()
-            if let onRegenerate, !message.isUser {
-                Button("Regenerate") { onRegenerate() }
-            }
-            if let onDeleteAndAfter {
-                Button("Delete From Here") { onDeleteAndAfter() }
-            }
-            Divider()
-            Button("Delete", role: .destructive) { onDelete() }
-        }
         .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    // MARK: - Action Buttons
+
+    @ViewBuilder
+    private var messageActionButtons: some View {
+        HStack(spacing: showActionLabels ? 6 : 4) {
+            actionButton("Copy", icon: "doc.on.doc", action: onCopy)
+            actionButton("Edit", icon: "pencil", action: onEdit)
+            actionButton(
+                message.isBookmarked ? "Unbookmark" : "Bookmark",
+                icon: message.isBookmarked ? "star.fill" : "star",
+                action: onToggleBookmark ?? {},
+                tint: message.isBookmarked ? .yellow : nil
+            )
+
+            if let onFork {
+                actionButton("Fork", icon: "arrow.branch", action: onFork)
+            }
+
+            if let onRegenerate, !message.isUser {
+                actionButton("Regenerate", icon: "arrow.clockwise", action: onRegenerate)
+            }
+
+            if let onDeleteAndAfter {
+                actionButton("Delete After", icon: "scissors", action: onDeleteAndAfter)
+            }
+
+            actionButton("Delete", icon: "trash", action: onDelete, tint: .red)
+        }
+        .padding(.top, 2)
+        .opacity(isHovered ? 1.0 : 0.0)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
+    }
+
+    private func actionButton(_ label: String, icon: String, action: @escaping () -> Void, tint: Color? = nil) -> some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                if showActionLabels {
+                    Text(label)
+                        .font(.system(size: 10))
+                }
+            }
+            .foregroundColor(tint ?? .secondary)
+            .padding(.horizontal, showActionLabels ? 6 : 4)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.primary.opacity(0.04))
+            )
+        }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(label)
     }
 }
 

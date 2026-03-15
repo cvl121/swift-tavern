@@ -830,3 +830,90 @@ final class UIImprovementTests: XCTestCase {
         XCTAssertEqual(settings.referenceImageStrength, 0.5, accuracy: 0.001)
     }
 }
+
+// MARK: - Message Action Buttons Tests
+
+final class MessageActionButtonsTests: XCTestCase {
+    func testShowChatButtonLabelsDefaultFalse() {
+        let settings = AppSettings.default
+        XCTAssertFalse(settings.showChatButtonLabels)
+    }
+
+    func testShowChatButtonLabelsEncodeDecode() throws {
+        var settings = AppSettings.default
+        settings.showChatButtonLabels = true
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertTrue(decoded.showChatButtonLabels)
+    }
+
+    func testShowChatButtonLabelsBackwardsCompatible() throws {
+        let settings = AppSettings.default
+        let data = try JSONEncoder().encode(settings)
+        var json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        json.removeValue(forKey: "show_chat_button_labels")
+        let modified = try JSONSerialization.data(withJSONObject: json)
+
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: modified)
+        XCTAssertFalse(decoded.showChatButtonLabels)
+    }
+
+    func testMessageActionsStillWork() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        let appState = AppState(rootDirectory: tempDir)
+        appState.loadAll()
+        let vm = ChatViewModel(appState: appState)
+
+        let msg = ChatMessage(name: "User", isUser: true, mes: "Test message")
+        appState.currentChat = ChatSession(
+            id: "test", filename: "test.jsonl",
+            metadata: ChatMetadata(userName: "User", characterName: "Bot", chatMetadata: ChatMetadataInfo()),
+            messages: [msg]
+        )
+
+        // Copy
+        vm.copyMessage(at: 0)
+        let copied = NSPasteboard.general.string(forType: .string)
+        XCTAssertEqual(copied, "Test message")
+
+        // Edit
+        vm.beginEditMessage(at: 0)
+        XCTAssertEqual(vm.editingMessageIndex, 0)
+        XCTAssertEqual(vm.editingText, "Test message")
+        vm.cancelEdit()
+        XCTAssertNil(vm.editingMessageIndex)
+
+        // Delete
+        vm.requestDeleteMessage(at: 0)
+        XCTAssertTrue(vm.showDeleteConfirmation)
+        XCTAssertEqual(vm.pendingDeleteIndex, 0)
+
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    func testEditTrimsTrailingNewlines() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        let appState = AppState(rootDirectory: tempDir)
+        appState.loadAll()
+        let vm = ChatViewModel(appState: appState)
+
+        let msg = ChatMessage(name: "User", isUser: true, mes: "Original")
+        appState.currentChat = ChatSession(
+            id: "test", filename: "test.jsonl",
+            metadata: ChatMetadata(userName: "User", characterName: "Bot", chatMetadata: ChatMetadataInfo()),
+            messages: [msg]
+        )
+
+        vm.beginEditMessage(at: 0)
+        vm.editingText = "Edited text\n\n\n"
+        vm.saveEditedMessage()
+
+        XCTAssertEqual(appState.currentChat?.messages[0].mes, "Edited text")
+
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+}

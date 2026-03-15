@@ -617,7 +617,7 @@ struct SettingsView: View {
                         viewModel.saveConfiguration()
                     }
 
-                Text("Display text labels next to the chat action buttons in the header.")
+                Text("Display text labels next to the chat action buttons in the header and on each message.")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }

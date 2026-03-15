@@ -499,6 +499,7 @@ struct ChatView: View {
             chatStyle: activeChatStyle,
             imageBasePath: appState.directoryManager.generatedImagesDirectory,
             imageDisplaySize: appState.settings.imageGenerationSettings.displaySize,
+            showActionLabels: appState.settings.showChatButtonLabels,
             isFocused: chatVM.focusedMessageIndex == index,
             swipeInfo: swipe
         )
