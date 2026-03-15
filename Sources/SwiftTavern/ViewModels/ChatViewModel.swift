@@ -729,7 +729,12 @@ final class ChatViewModel {
         }
 
         pushUndo("edit message")
-        appState.currentChat?.messages[index].mes = editingText
+        // Trim trailing empty lines from the edited message
+        var trimmed = editingText
+        while trimmed.hasSuffix("\n") || trimmed.hasSuffix("\r") {
+            trimmed = String(trimmed.dropLast())
+        }
+        appState.currentChat?.messages[index].mes = trimmed
         rewriteCurrentChat()
         cancelEdit()
     }

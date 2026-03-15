@@ -68,24 +68,11 @@ struct MessageBubbleView: View {
 
                 // Message content or edit field
                 if isEditing {
-                    VStack(spacing: 6) {
-                        TextEditor(text: $editText)
-                            .font(.system(size: 13))
-                            .frame(minHeight: 60, maxHeight: 200)
-                            .scrollContentBackground(.hidden)
-                            .padding(8)
-                            .background(Color(.controlBackgroundColor))
-                            .cornerRadius(8)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor, lineWidth: 2))
-
-                        HStack {
-                            Button("Cancel", action: onCancelEdit)
-                                .controlSize(.small)
-                            Button("Save", action: onSaveEdit)
-                                .controlSize(.small)
-                                .buttonStyle(.borderedProminent)
-                        }
-                    }
+                    MessageEditField(
+                        text: $editText,
+                        onSave: onSaveEdit,
+                        onCancel: onCancelEdit
+                    )
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
                         MarkdownTextView(text: message.mes, chatStyle: chatStyle)
@@ -199,5 +186,43 @@ struct MessageBubbleView: View {
             Button("Delete", role: .destructive) { onDelete() }
         }
         .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+}
+
+/// Editing field extracted to its own view so its TextEditor state is independent
+/// of the LazyVStack recycling that causes hangs when scrolling during an edit.
+private struct MessageEditField: View {
+    @Binding var text: String
+    let onSave: () -> Void
+    let onCancel: () -> Void
+
+    @State private var localText: String = ""
+
+    var body: some View {
+        VStack(spacing: 6) {
+            TextEditor(text: $localText)
+                .font(.system(size: 13))
+                .frame(minHeight: 60, maxHeight: 200)
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .background(Color(.controlBackgroundColor))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor, lineWidth: 2))
+
+            HStack {
+                Button("Cancel", action: onCancel)
+                    .controlSize(.small)
+
+                Button("Save") {
+                    text = localText
+                    onSave()
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .onAppear {
+            localText = text
+        }
     }
 }
