@@ -228,7 +228,7 @@ private struct MessageEditField: View {
         VStack(spacing: 6) {
             TextEditor(text: $localText)
                 .font(.system(size: 13))
-                .frame(minHeight: 60, maxHeight: 200)
+                .frame(minHeight: 100, maxHeight: 500)
                 .scrollContentBackground(.hidden)
                 .padding(8)
                 .background(Color(.controlBackgroundColor))

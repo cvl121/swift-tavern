@@ -217,6 +217,17 @@ struct ChatView: View {
                     // Re-anchor scroll when user swipes between response versions
                     scrollToBottom(proxy: proxy, animated: false)
                 }
+                .onChange(of: chatVM.editingMessageIndex) { _, newIndex in
+                    // Scroll to the message being edited so it's visible
+                    if let index = newIndex, index < chatVM.messages.count {
+                        let messageID = chatVM.messages[index].id
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(messageID, anchor: .top)
+                            }
+                        }
+                    }
+                }
                 .onChange(of: chatVM.greetingSwipeIndex) {
                     // Re-anchor scroll when user swipes between greeting versions
                     scrollToBottom(proxy: proxy, animated: false)
