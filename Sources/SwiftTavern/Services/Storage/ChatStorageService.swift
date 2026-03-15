@@ -123,6 +123,35 @@ final class ChatStorageService: @unchecked Sendable {
         }
     }
 
+    /// Async version of appendMessage that runs file I/O off the main thread
+    func appendMessageAsync(_ message: ChatMessage, characterName: String, filename: String) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            ioQueue.async { [self] in
+                do {
+                    let chatDir = chatDirectory(for: characterName)
+                    let fileURL = chatDir.appendingPathComponent(filename)
+
+                    let line = try encodeLine(message) + "\n"
+                    guard let data = line.data(using: .utf8) else {
+                        throw ChatStorageError.encodingFailed
+                    }
+
+                    if FileManager.default.fileExists(atPath: fileURL.path) {
+                        let handle = try FileHandle(forWritingTo: fileURL)
+                        defer { handle.closeFile() }
+                        handle.seekToEndOfFile()
+                        handle.write(data)
+                    } else {
+                        try data.write(to: fileURL, options: .atomic)
+                    }
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     /// Rewrite an entire chat session to disk (for edits/deletes)
     func rewriteChat(_ session: ChatSession, characterName: String) throws {
         try ioQueue.sync {
@@ -136,6 +165,29 @@ final class ChatStorageService: @unchecked Sendable {
 
             let content = lines.joined(separator: "\n") + "\n"
             try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        }
+    }
+
+    /// Async version of rewriteChat that runs file I/O off the main thread
+    func rewriteChatAsync(_ session: ChatSession, characterName: String) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            ioQueue.async { [self] in
+                do {
+                    let chatDir = chatDirectory(for: characterName)
+                    let fileURL = chatDir.appendingPathComponent(session.filename)
+
+                    var lines = [try encodeLine(session.metadata)]
+                    for message in session.messages {
+                        lines.append(try encodeLine(message))
+                    }
+
+                    let content = lines.joined(separator: "\n") + "\n"
+                    try content.write(to: fileURL, atomically: true, encoding: .utf8)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
         }
     }
 

@@ -53,7 +53,7 @@ struct SettingsView: View {
                 HStack {
                     settingsContent
                         .padding(24)
-                        .frame(maxWidth: 600, alignment: .leading)
+                        .frame(maxWidth: 800, alignment: .leading)
                     Spacer(minLength: 0)
                 }
             }
@@ -206,7 +206,7 @@ struct SettingsView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             if viewModel.selectedAPI == .openrouter {
-                                ForEach(groupedFilteredModels, id: \.provider) { group in
+                                ForEach(viewModel.groupedFilteredModels, id: \.provider) { group in
                                     Text(group.provider.uppercased())
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundColor(.secondary)
@@ -298,23 +298,6 @@ struct SettingsView: View {
                 ImageGenerationSettingsView(viewModel: viewModel)
             }
         }
-    }
-
-    private struct ModelGroup: Identifiable {
-        let provider: String
-        let models: [String]
-        var id: String { provider }
-    }
-
-    private var groupedFilteredModels: [ModelGroup] {
-        let filtered = viewModel.filteredModels
-        var groups: [String: [String]] = [:]
-        for model in filtered {
-            let provider = model.components(separatedBy: "/").first ?? "other"
-            groups[provider, default: []].append(model)
-        }
-        return groups.map { ModelGroup(provider: $0.key, models: $0.value) }
-            .sorted { $0.provider < $1.provider }
     }
 
     private func modelRow(_ modelName: String) -> some View {
@@ -464,12 +447,31 @@ struct SettingsView: View {
 
             Divider()
 
+            // Welcome & Tutorial
+            VStack(alignment: .leading, spacing: 6) {
+                Button(action: {
+                    NotificationCenter.default.post(name: .showOnboarding, object: nil)
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "questionmark.circle")
+                        Text("Show Welcome & Tutorial")
+                    }
+                }
+                .controlSize(.regular)
+
+                Text("View the app introduction, feature overview, and usage tutorial.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            Divider()
+
             Toggle("Advanced Mode", isOn: $viewModel.advancedMode)
                 .onChange(of: viewModel.advancedMode) { _, _ in
                     viewModel.saveConfiguration()
                 }
 
-            Text("Show the Chat Presets tab for fine-tuning model behavior.")
+            Text("Show the Chat Completion Preset tab for fine-tuning model behavior.")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
@@ -524,7 +526,15 @@ struct SettingsView: View {
             .cornerRadius(8)
 
             HStack {
+                Button("Save as Global Default") {
+                    viewModel.saveStyleAsGlobalDefault()
+                }
+                .controlSize(.small)
+                .buttonStyle(.bordered)
+                .help("Save the current colors and font size as the global default for all new conversations")
+
                 Spacer()
+
                 Button("Reset to Defaults") {
                     viewModel.chatStyle = .default
                     viewModel.saveConfiguration()
@@ -676,10 +686,10 @@ struct SettingsView: View {
 
     private var presetsSection: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Chat Presets")
+            Text("Chat Completion Preset")
                 .font(.title2.bold())
 
-            Text("Manage generation parameter presets. Changes are saved when you click Update.")
+            Text("Manage text generation presets for controlling model sampling behavior. Changes are saved when you click Update.")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
 
@@ -805,10 +815,10 @@ struct SettingsView: View {
 
                     // Image Generation
                     VStack(alignment: .leading, spacing: 4) {
-                        Toggle("Image Generation", isOn: Binding(
-                            get: { viewModel.imageGenSettings.enabled },
-                            set: { viewModel.imageGenSettings.enabled = $0; viewModel.saveConfiguration() }
-                        ))
+                        Toggle("Image Generation", isOn: $viewModel.imageGenSettings.enabled)
+                            .onChange(of: viewModel.imageGenSettings.enabled) { _, _ in
+                                Task { @MainActor in viewModel.saveConfiguration() }
+                            }
                         Text("Generate images within conversations using AI image models. When enabled, image generation settings appear in the API Provider section.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)

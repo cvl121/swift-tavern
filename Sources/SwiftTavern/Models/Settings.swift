@@ -54,6 +54,10 @@ struct AppSettings: Codable {
     var messageDragReorderEnabled: Bool
     var keyboardMessageNavEnabled: Bool
     var imageGenerationSettings: ImageGenerationSettings
+    /// Maps character filename → persona name for character-specific persona overrides
+    var characterPersonas: [String: String]
+    /// Set of character filenames pinned to top of conversation list
+    var pinnedCharacters: [String]
 
     enum CodingKeys: String, CodingKey {
         case activeAPI = "active_api"
@@ -89,6 +93,8 @@ struct AppSettings: Codable {
         case messageDragReorderEnabled = "message_drag_reorder_enabled"
         case keyboardMessageNavEnabled = "keyboard_message_nav_enabled"
         case imageGenerationSettings = "image_generation_settings"
+        case characterPersonas = "character_personas"
+        case pinnedCharacters = "pinned_characters"
     }
 
     init(from decoder: Decoder) throws {
@@ -126,6 +132,8 @@ struct AppSettings: Codable {
         messageDragReorderEnabled = try container.decodeIfPresent(Bool.self, forKey: .messageDragReorderEnabled) ?? false
         keyboardMessageNavEnabled = try container.decodeIfPresent(Bool.self, forKey: .keyboardMessageNavEnabled) ?? false
         imageGenerationSettings = try container.decodeIfPresent(ImageGenerationSettings.self, forKey: .imageGenerationSettings) ?? .default
+        characterPersonas = try container.decodeIfPresent([String: String].self, forKey: .characterPersonas) ?? [:]
+        pinnedCharacters = try container.decodeIfPresent([String].self, forKey: .pinnedCharacters) ?? []
     }
 
     init(
@@ -150,7 +158,9 @@ struct AppSettings: Codable {
         chatBranchingEnabled: Bool = false,
         messageDragReorderEnabled: Bool = false,
         keyboardMessageNavEnabled: Bool = false,
-        imageGenerationSettings: ImageGenerationSettings = .default
+        imageGenerationSettings: ImageGenerationSettings = .default,
+        characterPersonas: [String: String] = [:],
+        pinnedCharacters: [String] = []
     ) {
         self.activeAPI = activeAPI
         self.activeModel = activeModel
@@ -185,6 +195,8 @@ struct AppSettings: Codable {
         self.messageDragReorderEnabled = messageDragReorderEnabled
         self.keyboardMessageNavEnabled = keyboardMessageNavEnabled
         self.imageGenerationSettings = imageGenerationSettings
+        self.characterPersonas = characterPersonas
+        self.pinnedCharacters = pinnedCharacters
     }
 
     static let `default` = AppSettings(

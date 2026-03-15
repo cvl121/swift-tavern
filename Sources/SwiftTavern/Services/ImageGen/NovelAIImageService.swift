@@ -6,8 +6,10 @@ import Compression
 struct NovelAIImageService: ImageGenerationService {
     func generateImage(
         prompt: String,
+        negativePrompt: String? = nil,
         settings: ImageGenerationSettings,
-        apiKey: String
+        apiKey: String,
+        referenceImage: Data? = nil
     ) async throws -> Data {
         let baseURL = settings.baseURL ?? "https://image.novelai.net"
         guard let url = URL(string: "\(baseURL)/ai/generate-image") else {
@@ -25,9 +27,11 @@ struct NovelAIImageService: ImageGenerationService {
 
         let body = buildRequestBody(
             prompt: prompt,
+            negativePrompt: negativePrompt,
             model: model,
             isV4: isV4,
-            settings: settings
+            settings: settings,
+            referenceImage: referenceImage
         )
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -68,11 +72,15 @@ struct NovelAIImageService: ImageGenerationService {
     /// Build the request body, using v4 prompt format for v4+ models
     private func buildRequestBody(
         prompt: String,
+        negativePrompt customNegativePrompt: String?,
         model: String,
         isV4: Bool,
-        settings: ImageGenerationSettings
+        settings: ImageGenerationSettings,
+        referenceImage: Data? = nil
     ) -> [String: Any] {
-        let negativePrompt = "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry"
+        let negativePrompt = (customNegativePrompt ?? "").isEmpty
+            ? "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry"
+            : customNegativePrompt!
         let seed = Int.random(in: 0...Int(Int32.max))
 
         var parameters: [String: Any] = [
@@ -122,10 +130,22 @@ struct NovelAIImageService: ImageGenerationService {
             parameters["qualityToggle"] = settings.quality == .hd
         }
 
+        // If a reference image is provided, use img2img mode
+        let action: String
+        if let referenceImage {
+            action = "img2img"
+            parameters["image"] = referenceImage.base64EncodedString()
+            parameters["strength"] = settings.referenceImageStrength
+            parameters["noise"] = 0.0
+            parameters["extra_noise_seed"] = Int.random(in: 0...Int(Int32.max))
+        } else {
+            action = "generate"
+        }
+
         return [
             "input": prompt,
             "model": model,
-            "action": "generate",
+            "action": action,
             "parameters": parameters,
         ]
     }
@@ -181,20 +201,26 @@ struct NovelAIImageService: ImageGenerationService {
         return nil
     }
 
-    /// Decompress raw deflate data using the Compression framework
+    /// Decompress raw deflate data using the Compression framework.
+    /// ZIP method 8 uses raw DEFLATE (no zlib header), so we prepend a zlib header
+    /// to make it compatible with COMPRESSION_ZLIB.
     private func decompressDeflate(_ data: Data, expectedSize: Int) -> Data? {
-        // Allocate buffer with some headroom
+        // Prepend zlib header (0x78 0x9C = deflate, default compression) to raw deflate data
+        // so COMPRESSION_ZLIB can process it
+        var zlibWrapped = Data([0x78, 0x9C])
+        zlibWrapped.append(data)
+
         let bufferSize = max(expectedSize, data.count * 4)
         let destinationBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
         defer { destinationBuffer.deallocate() }
 
-        let decompressedSize = data.withUnsafeBytes { srcBuffer -> Int in
-            guard let srcPointer = srcBuffer.baseAddress?.bindMemory(to: UInt8.self, capacity: data.count) else {
+        let decompressedSize = zlibWrapped.withUnsafeBytes { srcBuffer -> Int in
+            guard let srcPointer = srcBuffer.baseAddress?.bindMemory(to: UInt8.self, capacity: zlibWrapped.count) else {
                 return 0
             }
             return compression_decode_buffer(
                 destinationBuffer, bufferSize,
-                srcPointer, data.count,
+                srcPointer, zlibWrapped.count,
                 nil,
                 COMPRESSION_ZLIB
             )

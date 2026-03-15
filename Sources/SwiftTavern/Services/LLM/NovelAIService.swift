@@ -117,6 +117,26 @@ final class NovelAIService: LLMService {
         if !params.stopSequences.isEmpty {
             parameters["stop_sequences"] = params.stopSequences.map { Array($0.utf8).map { Int($0) } }
         }
+        if params.minP > 0 {
+            parameters["min_p"] = params.minP
+        }
+        if params.typicalP < 1.0 {
+            parameters["typical_p"] = params.typicalP
+        }
+        if params.tfs < 1.0 {
+            parameters["tail_free_sampling"] = params.tfs
+        }
+        if params.mirostatMode > 0 {
+            parameters["mirostat_mode"] = params.mirostatMode
+            parameters["mirostat_tau"] = params.mirostatTau
+            parameters["mirostat_eta"] = params.mirostatEta
+        }
+        if params.minLength > 0 {
+            parameters["min_length"] = params.minLength
+        }
+        if params.noRepeatNgramSize > 0 {
+            parameters["no_repeat_ngram_size"] = params.noRepeatNgramSize
+        }
 
         let body: [String: Any] = [
             "input": prompt,

@@ -3,6 +3,7 @@ import SwiftUI
 /// Full-page Personas view shown in the detail pane
 struct PersonaPageView: View {
     @Bindable var personaVM: PersonaViewModel
+    var appState: AppState?
 
     @State private var hoveredPersona: String?
     @State private var showingCreator = false
@@ -16,12 +17,6 @@ struct PersonaPageView: View {
 
                 Spacer()
 
-                Button(action: { showingCreator = true }) {
-                    Label("New Persona", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-
                 Button(action: { personaVM.showingImporter = true }) {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
@@ -32,6 +27,12 @@ struct PersonaPageView: View {
                     Label("Export All", systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button(action: { showingCreator = true }) {
+                    Label("New Persona", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
                 .controlSize(.small)
             }
             .padding(.horizontal, 20)
@@ -78,13 +79,13 @@ struct PersonaPageView: View {
                         .listStyle(.sidebar)
                         .scrollContentBackground(.hidden)
                     }
-                    .frame(width: 240)
+                    .frame(minWidth: 200, idealWidth: 240, maxWidth: 300)
 
                     Divider()
 
                     // Detail editor
                     if let persona = personaVM.selectedPersona {
-                        PersonaDetailView(personaVM: personaVM, persona: persona)
+                        PersonaDetailView(personaVM: personaVM, persona: persona, appState: appState)
                             .id(persona.name)
                     } else {
                         Text("Select a persona to view details")
@@ -150,7 +151,7 @@ struct PersonaPageView: View {
             }
             Spacer()
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
         .contentShape(Rectangle())
         .onTapGesture {
             personaVM.selectedPersona = persona
@@ -284,7 +285,7 @@ private struct CreatePersonaSheet: View {
             }
             .padding(16)
         }
-        .frame(width: 420, height: 460)
+        .frame(minWidth: 380, idealWidth: 420, maxWidth: 500, minHeight: 400, idealHeight: 460, maxHeight: 600)
     }
 
     private func pickAvatar() {
@@ -314,14 +315,16 @@ private struct CreatePersonaSheet: View {
 private struct PersonaDetailView: View {
     var personaVM: PersonaViewModel
     let persona: Persona
+    var appState: AppState?
 
     @State private var editName: String
     @State private var editDescription: String
     @State private var hasChanges = false
 
-    init(personaVM: PersonaViewModel, persona: Persona) {
+    init(personaVM: PersonaViewModel, persona: Persona, appState: AppState?) {
         self.personaVM = personaVM
         self.persona = persona
+        self.appState = appState
         _editName = State(initialValue: persona.name)
         _editDescription = State(initialValue: persona.description)
     }
@@ -422,9 +425,88 @@ private struct PersonaDetailView: View {
                         .disabled(editName.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
+
+                // Character-specific assignment
+                if let appState, !appState.characters.isEmpty {
+                    Divider()
+                    characterAssignmentSection(appState: appState)
+                }
             }
             .padding(24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func characterAssignmentSection(appState: AppState) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Character-Specific Persona")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.secondary)
+            Text("Assign this persona to specific characters. When chatting with an assigned character, this persona will be used instead of the global active persona.")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+
+            let assignedCharacters = appState.characters.filter { char in
+                appState.settings.characterPersonas[char.filename] == persona.name
+            }
+            let unassignedCharacters = appState.characters.filter { char in
+                appState.settings.characterPersonas[char.filename] != persona.name
+            }
+
+            // Currently assigned characters
+            if !assignedCharacters.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(assignedCharacters, id: \.filename) { character in
+                        HStack(spacing: 8) {
+                            AvatarImageView(
+                                imageData: character.avatarData,
+                                name: character.card.data.name,
+                                size: AvatarImageView.sizeSmall
+                            )
+                            Text(character.card.data.name)
+                                .font(.system(size: 12))
+                            Spacer()
+                            Button(action: {
+                                appState.settings.characterPersonas.removeValue(forKey: character.filename)
+                                appState.saveSettings()
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove character assignment")
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.accentColor.opacity(0.08))
+                        .cornerRadius(6)
+                    }
+                }
+            }
+
+            // Add character picker
+            if !unassignedCharacters.isEmpty {
+                Menu {
+                    ForEach(unassignedCharacters, id: \.filename) { character in
+                        Button(character.card.data.name) {
+                            appState.settings.characterPersonas[character.filename] = persona.name
+                            appState.saveSettings()
+                        }
+                    }
+                } label: {
+                    Label("Assign to Character", systemImage: "plus")
+                        .font(.system(size: 12))
+                }
+                .controlSize(.small)
+            }
+
+            if assignedCharacters.isEmpty {
+                Text("No characters assigned. The global active persona will be used.")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.7))
+                    .italic()
+            }
+        }
     }
 }

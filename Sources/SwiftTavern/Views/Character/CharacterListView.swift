@@ -27,6 +27,7 @@ struct CharacterListView: View {
     }
 
     @State private var showingFileImporter = false
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -73,6 +74,9 @@ struct CharacterListView: View {
                     Text("Create or import a character to get started.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
+                    Text("Drop PNG or JSON files here to import")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -85,15 +89,35 @@ struct CharacterListView: View {
                                     appState.selectedSidebarItem = .characterInfo(entry.filename)
                                 },
                                 onNewChat: { characterListVM.startNewChat(entry) },
-                                onDelete: { characterListVM.requestDeleteCharacter(entry) }
+                                onDelete: { characterListVM.requestDeleteCharacter(entry) },
+                                onEdit: { characterListVM.editCharacter(entry) },
+                                onExport: { characterListVM.exportCharacter(entry) }
                             )
                         }
                     }
                     .padding(16)
                 }
-                .onDrop(of: [.png, .json, .fileURL], isTargeted: nil) { providers in
-                    handleDrop(providers: providers)
-                }
+            }
+        }
+        .onDrop(of: [.png, .json, .fileURL], isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers: providers)
+        }
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [8, 4]))
+                    .background(Color.accentColor.opacity(0.08))
+                    .overlay {
+                        VStack(spacing: 8) {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 32))
+                                .foregroundColor(.accentColor)
+                            Text("Drop to Import Character")
+                                .font(.headline)
+                                .foregroundColor(.accentColor)
+                        }
+                    }
+                    .padding(4)
             }
         }
         .fileImporter(
@@ -114,6 +138,8 @@ private struct CharacterListRow: View {
     let onSelect: () -> Void
     let onNewChat: () -> Void
     let onDelete: () -> Void
+    var onEdit: (() -> Void)? = nil
+    var onExport: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 14) {
@@ -164,5 +190,17 @@ private struct CharacterListRow: View {
         .cornerRadius(8)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
+        .contextMenu {
+            Button("View Details") { onSelect() }
+            Button("Start Chat") { onNewChat() }
+            if let onEdit = onEdit {
+                Button("Edit Character") { onEdit() }
+            }
+            if let onExport = onExport {
+                Button("Export Character") { onExport() }
+            }
+            Divider()
+            Button("Delete", role: .destructive) { onDelete() }
+        }
     }
 }

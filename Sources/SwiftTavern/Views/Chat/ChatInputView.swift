@@ -17,6 +17,11 @@ struct ChatInputView: View {
     let onStop: () -> Void
     var onGenerateImage: (() -> Void)?
 
+    @FocusState private var isInputFocused: Bool
+    @State private var dragStartHeight: CGFloat = 0
+    @State private var localHeight: CGFloat = 0
+    @State private var isDragging: Bool = false
+
     private let minInputHeight: CGFloat = 32
     private let maxInputHeight: CGFloat = 200
 
@@ -26,12 +31,12 @@ struct ChatInputView: View {
             ZStack {
                 Rectangle()
                     .fill(Color.clear)
-                    .frame(height: 8)
+                    .frame(height: 12)
 
                 HStack(spacing: 3) {
                     ForEach(0..<3, id: \.self) { _ in
                         Circle()
-                            .frame(width: 4, height: 4)
+                            .frame(width: 5, height: 5)
                     }
                 }
                 .foregroundColor(.secondary.opacity(0.5))
@@ -39,12 +44,18 @@ struct ChatInputView: View {
             .contentShape(Rectangle())
             .cursor(.resizeUpDown)
             .gesture(
-                DragGesture()
+                DragGesture(minimumDistance: 1)
                     .onChanged { value in
-                        let newHeight = inputHeight - value.translation.height
-                        inputHeight = min(max(newHeight, minInputHeight), maxInputHeight)
+                        if !isDragging {
+                            isDragging = true
+                            dragStartHeight = inputHeight
+                        }
+                        localHeight = min(max(dragStartHeight - value.translation.height, minInputHeight), maxInputHeight)
                     }
                     .onEnded { _ in
+                        inputHeight = localHeight
+                        isDragging = false
+                        dragStartHeight = 0
                         onHeightChanged?()
                     }
             )
@@ -77,11 +88,14 @@ struct ChatInputView: View {
             HStack(alignment: .bottom, spacing: 8) {
                 TextEditor(text: $text)
                     .font(.system(size: fontSize))
-                    .frame(height: inputHeight)
+                    .frame(height: isDragging ? localHeight : inputHeight)
                     .scrollContentBackground(.hidden)
                     .padding(8)
                     .background(Color(.controlBackgroundColor))
                     .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(isInputFocused ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1.5))
+                    .focused($isInputFocused)
+                    .accessibilityLabel("Message input")
 
                 VStack(spacing: 6) {
                     if imageGenEnabled {

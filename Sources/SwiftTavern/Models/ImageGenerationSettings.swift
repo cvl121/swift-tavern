@@ -54,6 +54,42 @@ enum ImageGenProvider: String, Codable, CaseIterable, Identifiable {
         "image_gen_\(rawValue)"
     }
 
+    /// Whether this provider supports a negative prompt field
+    var supportsNegativePrompt: Bool {
+        switch self {
+        case .novelai, .stabilityAI: return true
+        default: return false
+        }
+    }
+
+    /// Whether this provider supports using a reference image (img2img)
+    var supportsReferenceImage: Bool {
+        switch self {
+        case .novelai, .openrouter: return true
+        default: return false
+        }
+    }
+
+    /// Prompt format guidance for the user
+    var promptHint: String {
+        switch self {
+        case .novelai: return "NovelAI works best with comma-separated danbooru-style tags.\nExample: 1girl, long hair, blue eyes, forest, sunlight, detailed background, masterpiece"
+        case .openaiDalle: return "Describe the scene in natural language. Be specific about composition, style, lighting, and mood."
+        case .openrouter: return "Describe the scene in natural language. The prompt is sent to the selected image model via chat."
+        case .stabilityAI: return "Use descriptive visual language. Supports negative prompts to exclude unwanted elements."
+        case .custom: return "Enter your image prompt below."
+        }
+    }
+
+    /// Placeholder text for the negative prompt field
+    var negativePromptHint: String {
+        switch self {
+        case .novelai: return "lowres, bad anatomy, bad hands, text, error, worst quality, low quality, jpeg artifacts, watermark, blurry"
+        case .stabilityAI: return "blurry, low quality, distorted, watermark, text"
+        default: return ""
+        }
+    }
+
     /// Whether this provider can share an API key with a text provider
     var sharedTextProvider: APIType? {
         switch self {
@@ -200,6 +236,10 @@ struct ImageGenerationSettings: Codable, Equatable {
     var useSharedAPIKey: Bool
     /// How large images appear in the conversation
     var displaySize: ImageDisplaySize
+    /// Whether to use the character's avatar as a reference image (img2img)
+    var useReferenceImage: Bool
+    /// How strongly the reference image influences the output (0.0 = ignore, 1.0 = very close)
+    var referenceImageStrength: Double
 
     enum CodingKeys: String, CodingKey {
         case enabled, provider, model, quality
@@ -212,6 +252,8 @@ struct ImageGenerationSettings: Codable, Equatable {
         case useMainAPIForSceneSummary = "use_main_api_for_scene_summary"
         case useSharedAPIKey = "use_shared_api_key"
         case displaySize = "display_size"
+        case useReferenceImage = "use_reference_image"
+        case referenceImageStrength = "reference_image_strength"
     }
 
     init(from decoder: Decoder) throws {
@@ -229,6 +271,8 @@ struct ImageGenerationSettings: Codable, Equatable {
         useMainAPIForSceneSummary = try container.decodeIfPresent(Bool.self, forKey: .useMainAPIForSceneSummary) ?? true
         useSharedAPIKey = try container.decodeIfPresent(Bool.self, forKey: .useSharedAPIKey) ?? true
         displaySize = try container.decodeIfPresent(ImageDisplaySize.self, forKey: .displaySize) ?? .medium
+        useReferenceImage = try container.decodeIfPresent(Bool.self, forKey: .useReferenceImage) ?? false
+        referenceImageStrength = try container.decodeIfPresent(Double.self, forKey: .referenceImageStrength) ?? 0.6
     }
 
     init(
@@ -244,7 +288,9 @@ struct ImageGenerationSettings: Codable, Equatable {
         scenePromptTemplate: String = ImageGenerationSettings.defaultScenePromptTemplate,
         useMainAPIForSceneSummary: Bool = true,
         useSharedAPIKey: Bool = true,
-        displaySize: ImageDisplaySize = .medium
+        displaySize: ImageDisplaySize = .medium,
+        useReferenceImage: Bool = false,
+        referenceImageStrength: Double = 0.6
     ) {
         self.enabled = enabled
         self.provider = provider
@@ -259,6 +305,8 @@ struct ImageGenerationSettings: Codable, Equatable {
         self.useMainAPIForSceneSummary = useMainAPIForSceneSummary
         self.useSharedAPIKey = useSharedAPIKey
         self.displaySize = displaySize
+        self.useReferenceImage = useReferenceImage
+        self.referenceImageStrength = referenceImageStrength
     }
 
     static let defaultInjectionPrompt = """

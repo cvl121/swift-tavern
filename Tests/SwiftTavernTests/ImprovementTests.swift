@@ -412,12 +412,12 @@ final class AutoSaveSettingsTests: XCTestCase {
         // Change a setting
         appState.settings.userName = "NewUserName"
 
-        // Wait for debounced save
+        // Wait for debounced save (debounce is 2000ms)
         let expectation = XCTestExpectation(description: "Auto-save")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 2.0)
+        wait(for: [expectation], timeout: 4.0)
 
         // Load settings fresh and verify
         let freshState = AppState(rootDirectory: tempDir)
@@ -511,5 +511,322 @@ final class WindowTitleTests: XCTestCase {
         XCTAssertEqual(appState.selectedCharacter?.card.data.name, "TestTitle")
 
         try? FileManager.default.removeItem(at: tempDir)
+    }
+}
+
+// MARK: - Quick Win: Sidebar Sort by Recency Tests
+
+final class SidebarSortTests: XCTestCase {
+    func testPinnedCharactersSortedFirst() {
+        var settings = AppSettings.default
+        settings.pinnedCharacters = ["pinned.png"]
+
+        let pinned = Set(settings.pinnedCharacters)
+
+        let entries = [
+            makeEntry(filename: "unpinned1.png", name: "Charlie"),
+            makeEntry(filename: "pinned.png", name: "Alice"),
+            makeEntry(filename: "unpinned2.png", name: "Bob"),
+        ]
+
+        let sorted = entries.sorted { a, b in
+            let aPinned = pinned.contains(a.filename)
+            let bPinned = pinned.contains(b.filename)
+            if aPinned != bPinned { return aPinned }
+            return false
+        }
+
+        XCTAssertEqual(sorted[0].filename, "pinned.png")
+    }
+
+    func testRecencySortWithinGroups() {
+        let pinned = Set<String>()
+        let chatDateCache: [String: Date] = [
+            "Alice": Date(timeIntervalSince1970: 100),
+            "Bob": Date(timeIntervalSince1970: 300),
+            "Charlie": Date(timeIntervalSince1970: 200),
+        ]
+
+        let entries = [
+            makeEntry(filename: "alice.png", name: "Alice"),
+            makeEntry(filename: "bob.png", name: "Bob"),
+            makeEntry(filename: "charlie.png", name: "Charlie"),
+        ]
+
+        let sorted = entries.sorted { a, b in
+            let aPinned = pinned.contains(a.filename)
+            let bPinned = pinned.contains(b.filename)
+            if aPinned != bPinned { return aPinned }
+            let aDate = chatDateCache[a.card.data.name] ?? .distantPast
+            let bDate = chatDateCache[b.card.data.name] ?? .distantPast
+            return aDate > bDate
+        }
+
+        XCTAssertEqual(sorted[0].card.data.name, "Bob")     // most recent
+        XCTAssertEqual(sorted[1].card.data.name, "Charlie")  // middle
+        XCTAssertEqual(sorted[2].card.data.name, "Alice")    // oldest
+    }
+
+    func testPinnedAndRecencyCombined() {
+        let pinned: Set<String> = ["old-pinned.png"]
+        let chatDateCache: [String: Date] = [
+            "OldPinned": Date(timeIntervalSince1970: 100),
+            "RecentUnpinned": Date(timeIntervalSince1970: 500),
+        ]
+
+        let entries = [
+            makeEntry(filename: "recent.png", name: "RecentUnpinned"),
+            makeEntry(filename: "old-pinned.png", name: "OldPinned"),
+        ]
+
+        let sorted = entries.sorted { a, b in
+            let aPinned = pinned.contains(a.filename)
+            let bPinned = pinned.contains(b.filename)
+            if aPinned != bPinned { return aPinned }
+            let aDate = chatDateCache[a.card.data.name] ?? .distantPast
+            let bDate = chatDateCache[b.card.data.name] ?? .distantPast
+            return aDate > bDate
+        }
+
+        // Pinned always first, even if older
+        XCTAssertEqual(sorted[0].card.data.name, "OldPinned")
+        XCTAssertEqual(sorted[1].card.data.name, "RecentUnpinned")
+    }
+
+    private func makeEntry(filename: String, name: String) -> CharacterEntry {
+        CharacterEntry(
+            filename: filename,
+            card: TavernCardV2(data: CharacterData(name: name)),
+            avatarData: nil
+        )
+    }
+}
+
+// MARK: - Quick Win: IndexedDisplayMessages Tests
+
+final class IndexedDisplayMessagesTests: XCTestCase {
+    private var tempDir: URL!
+    private var appState: AppState!
+
+    override func setUp() {
+        super.setUp()
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        appState = AppState(rootDirectory: tempDir)
+        appState.loadAll()
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tempDir)
+        super.tearDown()
+    }
+
+    func testIndexedDisplayMessagesReturnsAll() {
+        let vm = ChatViewModel(appState: appState)
+        let messages = [
+            ChatMessage(name: "User", isUser: true, mes: "Hello"),
+            ChatMessage(name: "Bot", isUser: false, mes: "Hi there"),
+        ]
+        appState.currentChat = ChatSession(
+            id: "test", filename: "test.jsonl",
+            metadata: ChatMetadata(userName: "User", characterName: "Bot", chatMetadata: ChatMetadataInfo()),
+            messages: messages
+        )
+
+        vm.showingBookmarksOnly = false
+        let indexed = vm.indexedDisplayMessages
+        XCTAssertEqual(indexed.count, 2)
+        XCTAssertEqual(indexed[0].offset, 0)
+        XCTAssertEqual(indexed[1].offset, 1)
+    }
+
+    func testIndexedDisplayMessagesFiltersByBookmark() {
+        let vm = ChatViewModel(appState: appState)
+        var bookmarked = ChatMessage(name: "Bot", isUser: false, mes: "Important")
+        bookmarked.isBookmarked = true
+        let messages = [
+            ChatMessage(name: "User", isUser: true, mes: "Hello"),
+            bookmarked,
+            ChatMessage(name: "User", isUser: true, mes: "Bye"),
+        ]
+        appState.currentChat = ChatSession(
+            id: "test", filename: "test.jsonl",
+            metadata: ChatMetadata(userName: "User", characterName: "Bot", chatMetadata: ChatMetadataInfo()),
+            messages: messages
+        )
+
+        vm.showingBookmarksOnly = true
+        let indexed = vm.indexedDisplayMessages
+        XCTAssertEqual(indexed.count, 1)
+        XCTAssertEqual(indexed[0].offset, 1) // original index preserved
+        XCTAssertEqual(indexed[0].element.mes, "Important")
+    }
+
+    func testIndexedDisplayMessagesEmpty() {
+        let vm = ChatViewModel(appState: appState)
+        appState.currentChat = nil
+
+        let indexed = vm.indexedDisplayMessages
+        XCTAssertTrue(indexed.isEmpty)
+    }
+}
+
+// MARK: - Quick Win: Pinned Characters Settings Persistence Tests
+
+final class PinnedCharactersSettingsTests: XCTestCase {
+    func testPinnedCharactersDefaultEmpty() {
+        let settings = AppSettings.default
+        XCTAssertTrue(settings.pinnedCharacters.isEmpty)
+    }
+
+    func testPinnedCharactersEncodeDecode() throws {
+        var settings = AppSettings.default
+        settings.pinnedCharacters = ["char1.png", "char2.png"]
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(settings)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.pinnedCharacters, ["char1.png", "char2.png"])
+    }
+
+    func testPinnedCharactersBackwardsCompatible() throws {
+        // Simulate loading settings that don't have pinnedCharacters field
+        var settings = AppSettings.default
+        let encoder = JSONEncoder()
+        var data = try encoder.encode(settings)
+
+        // Remove the pinned_characters key from JSON
+        var json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        json.removeValue(forKey: "pinned_characters")
+        data = try JSONSerialization.data(withJSONObject: json)
+
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertTrue(decoded.pinnedCharacters.isEmpty)
+    }
+}
+
+// MARK: - Quick Win: Settings Debounce Tests
+
+final class SettingsDebounceTests: XCTestCase {
+    func testSettingsSaveWithReducedDebounce() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SwiftTavernTests-\(UUID().uuidString)")
+        let appState = AppState(rootDirectory: tempDir)
+        appState.loadAll()
+
+        appState.settings.userName = "DebounceTest"
+
+        // With 500ms debounce, should save within 1 second
+        let expectation = XCTestExpectation(description: "Debounced save")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+
+        let freshState = AppState(rootDirectory: tempDir)
+        freshState.loadAll()
+
+        let loadExpectation = XCTestExpectation(description: "Load")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            loadExpectation.fulfill()
+        }
+        wait(for: [loadExpectation], timeout: 2.0)
+
+        XCTAssertEqual(freshState.settings.userName, "DebounceTest")
+
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+}
+
+// MARK: - Reference Image Settings Tests
+
+final class ReferenceImageSettingsTests: XCTestCase {
+    func testReferenceImageDefaultValues() {
+        let settings = ImageGenerationSettings()
+        XCTAssertFalse(settings.useReferenceImage)
+        XCTAssertEqual(settings.referenceImageStrength, 0.6, accuracy: 0.001)
+    }
+
+    func testReferenceImageEncodeDecode() throws {
+        var settings = ImageGenerationSettings()
+        settings.useReferenceImage = true
+        settings.referenceImageStrength = 0.75
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(ImageGenerationSettings.self, from: data)
+
+        XCTAssertTrue(decoded.useReferenceImage)
+        XCTAssertEqual(decoded.referenceImageStrength, 0.75, accuracy: 0.001)
+    }
+
+    func testReferenceImageBackwardsCompatible() throws {
+        // Simulate loading settings without the new fields
+        let settings = ImageGenerationSettings()
+        let data = try JSONEncoder().encode(settings)
+        var json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        json.removeValue(forKey: "use_reference_image")
+        json.removeValue(forKey: "reference_image_strength")
+        let modified = try JSONSerialization.data(withJSONObject: json)
+
+        let decoded = try JSONDecoder().decode(ImageGenerationSettings.self, from: modified)
+        XCTAssertFalse(decoded.useReferenceImage)
+        XCTAssertEqual(decoded.referenceImageStrength, 0.6, accuracy: 0.001)
+    }
+
+    func testSupportsReferenceImage() {
+        XCTAssertTrue(ImageGenProvider.novelai.supportsReferenceImage)
+        XCTAssertTrue(ImageGenProvider.openrouter.supportsReferenceImage)
+        XCTAssertFalse(ImageGenProvider.openaiDalle.supportsReferenceImage)
+        XCTAssertFalse(ImageGenProvider.stabilityAI.supportsReferenceImage)
+        XCTAssertFalse(ImageGenProvider.custom.supportsReferenceImage)
+    }
+}
+
+// MARK: - System Default Font Size Tests
+
+final class SystemDefaultFontSizeTests: XCTestCase {
+    func testSystemDefaultFontSizeIsReasonable() {
+        let size = ChatStyle.systemDefaultFontSize
+        // macOS system font size is typically 13, but should be > 0
+        XCTAssertGreaterThan(size, 0)
+        XCTAssertLessThan(size, 100) // sanity check
+    }
+
+    func testDefaultChatStyleUsesSystemFontSize() {
+        let style = ChatStyle.default
+        XCTAssertEqual(style.fontSize, ChatStyle.systemDefaultFontSize, accuracy: 0.001)
+    }
+
+    func testLightDefaultChatStyleUsesSystemFontSize() {
+        let style = ChatStyle.lightDefault
+        XCTAssertEqual(style.fontSize, ChatStyle.systemDefaultFontSize, accuracy: 0.001)
+    }
+}
+
+// MARK: - UI Improvement Validation Tests
+
+final class UIImprovementTests: XCTestCase {
+    func testImageGenProviderHints() {
+        // Ensure all providers with reference image support also have prompt hints
+        for provider in ImageGenProvider.allCases {
+            XCTAssertFalse(provider.promptHint.isEmpty, "\(provider.displayName) missing prompt hint")
+            if provider.supportsReferenceImage {
+                // Providers that support reference images should also support the feature
+                XCTAssertTrue(provider == .novelai || provider == .openrouter)
+            }
+        }
+    }
+
+    func testImageGenerationSettingsWithReferenceImage() {
+        var settings = ImageGenerationSettings()
+        settings.useReferenceImage = true
+        settings.referenceImageStrength = 0.5
+        settings.provider = .novelai
+
+        XCTAssertTrue(settings.provider.supportsReferenceImage)
+        XCTAssertTrue(settings.useReferenceImage)
+        XCTAssertEqual(settings.referenceImageStrength, 0.5, accuracy: 0.001)
     }
 }

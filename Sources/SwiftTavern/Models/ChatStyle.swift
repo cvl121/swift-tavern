@@ -1,8 +1,11 @@
 import SwiftUI
+import AppKit
 
 /// Defines styling rules for chat message text.
 /// Colors are assigned per formatting marker — users choose what each marker "means" via color choice.
 struct ChatStyle: Codable, Equatable {
+    /// The system default font size, read once at launch
+    static let systemDefaultFontSize: Double = Double(NSFont.systemFontSize)
     /// Color for text enclosed in "double quotes"
     var quotedTextColor: CodableColor
     /// Color for text enclosed in *asterisks* (rendered italic)
@@ -15,20 +18,20 @@ struct ChatStyle: Codable, Equatable {
     var fontSize: Double
 
     static let `default` = ChatStyle(
-        quotedTextColor: CodableColor(r: 0.9, g: 0.85, b: 0.55),     // warm gold — speech
-        italicActionColor: CodableColor(r: 0.65, g: 0.75, b: 0.9),   // soft blue — thinking
-        narrativeColor: CodableColor(r: 0.9, g: 0.9, b: 0.9),        // near-white — narration & actions
-        thinkingColor: CodableColor(r: 0.7, g: 0.7, b: 0.7),         // muted gray — OOC/parentheses
-        fontSize: 13
+        quotedTextColor: CodableColor(r: 1.0, g: 0.92, b: 0.42),     // yellow — speech
+        italicActionColor: CodableColor(r: 0.7, g: 0.7, b: 0.7),     // grey — actions/asterisks
+        narrativeColor: CodableColor(r: 0.9, g: 0.9, b: 0.9),        // near-white — narration
+        thinkingColor: CodableColor(r: 0.6, g: 0.6, b: 0.6),         // muted gray — OOC/parentheses
+        fontSize: systemDefaultFontSize
     )
 
     /// Light-mode-safe defaults with darker colors for readability
     static let lightDefault = ChatStyle(
-        quotedTextColor: CodableColor(r: 0.6, g: 0.5, b: 0.0),
-        italicActionColor: CodableColor(r: 0.2, g: 0.35, b: 0.6),
-        narrativeColor: CodableColor(r: 0.1, g: 0.1, b: 0.1),
-        thinkingColor: CodableColor(r: 0.45, g: 0.45, b: 0.45),
-        fontSize: 13
+        quotedTextColor: CodableColor(r: 0.7, g: 0.6, b: 0.0),       // darker yellow — speech
+        italicActionColor: CodableColor(r: 0.4, g: 0.4, b: 0.4),     // dark grey — actions/asterisks
+        narrativeColor: CodableColor(r: 0.1, g: 0.1, b: 0.1),        // near-black — narration
+        thinkingColor: CodableColor(r: 0.45, g: 0.45, b: 0.45),      // muted gray — OOC
+        fontSize: systemDefaultFontSize
     )
 
     enum CodingKeys: String, CodingKey {

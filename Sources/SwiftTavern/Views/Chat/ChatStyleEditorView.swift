@@ -79,15 +79,17 @@ struct ChatStyleEditorView: View {
                         marker: "\"Double Quotes\"",
                         example: "\"Like this.\"",
                         hint: "Speech / dialogue",
-                        color: $chatStyle.quotedTextColor
+                        color: $chatStyle.quotedTextColor,
+                        accessibilityLabel: "Quoted text color"
                     )
 
                     // *Italic text*
                     markerColorPicker(
                         marker: "*Asterisks* (Italic)",
                         example: "*Like this.*",
-                        hint: "Internal thinking / inner monologue",
-                        color: $chatStyle.italicActionColor
+                        hint: "Actions / emotes / stage directions",
+                        color: $chatStyle.italicActionColor,
+                        accessibilityLabel: "Action text color"
                     )
 
                     // (Parenthesized text)
@@ -95,15 +97,17 @@ struct ChatStyleEditorView: View {
                         marker: "(Parentheses)",
                         example: "(Like this.)",
                         hint: "OOC or side notes",
-                        color: $chatStyle.thinkingColor
+                        color: $chatStyle.thinkingColor,
+                        accessibilityLabel: "Thinking text color"
                     )
 
                     // Plain text
                     markerColorPicker(
                         marker: "Plain Text",
                         example: "Like this.",
-                        hint: "Narration and actions",
-                        color: $chatStyle.narrativeColor
+                        hint: "Narration / description",
+                        color: $chatStyle.narrativeColor,
+                        accessibilityLabel: "Narrative text color"
                     )
 
                     Divider()
@@ -120,8 +124,8 @@ struct ChatStyleEditorView: View {
                             )
 
                             previewRow(
-                                label: "Thinking (*Asterisks*)",
-                                text: "*I wonder if she noticed me staring...*"
+                                label: "Actions (*Asterisks*)",
+                                text: "*She brushes a strand of hair from her face and glances away.*"
                             )
 
                             previewRow(
@@ -130,7 +134,7 @@ struct ChatStyleEditorView: View {
                             )
 
                             previewRow(
-                                label: "Narration & Actions (Plain)",
+                                label: "Narration (Plain)",
                                 text: "She leans against the doorframe, arms crossed, and smiles warmly."
                             )
 
@@ -141,7 +145,7 @@ struct ChatStyleEditorView: View {
                                 text: "She leans against the doorframe. \"Hey there.\" *I hope I look cool.* (OOC: nice scene!) She steps aside to let you in."
                             )
                         }
-                        .padding(10)
+                        .padding(12)
                         .background(Color(.controlBackgroundColor))
                         .cornerRadius(12)
                     }
@@ -170,7 +174,8 @@ struct ChatStyleEditorView: View {
         marker: String,
         example: String,
         hint: String,
-        color: Binding<CodableColor>
+        color: Binding<CodableColor>,
+        accessibilityLabel label: String = ""
     ) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
@@ -203,6 +208,7 @@ struct ChatStyleEditorView: View {
                 }
             ))
             .labelsHidden()
+            .accessibilityLabel(label)
         }
     }
 

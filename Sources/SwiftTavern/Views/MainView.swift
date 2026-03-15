@@ -11,6 +11,7 @@ struct MainView: View {
     @State private var personaVM: PersonaViewModel
     @State private var groupChatVM: GroupChatViewModel
     @State private var showOnboarding = false
+    @State private var showGlobalSearch = false
     @State private var sidebarVisible = true
     @State private var sidebarWidth: CGFloat = 250
     @State private var dragStartWidth: CGFloat = 250
@@ -94,6 +95,15 @@ struct MainView: View {
                     .padding(.leading, sidebarVisible ? 8 : 76)
 
                     Spacer()
+
+                    Button(action: { showGlobalSearch = true }) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Global Search (Cmd+Shift+F)")
+                    .padding(.trailing, 8)
                 }
                 .frame(height: 28)
 
@@ -147,6 +157,33 @@ struct MainView: View {
         }
         .sheet(isPresented: $groupChatVM.showingGroupEditor) {
             GroupEditorView(appState: appState, groupChatVM: groupChatVM)
+        }
+        .sheet(isPresented: $showGlobalSearch) {
+            GlobalSearchView(
+                appState: appState,
+                onDismiss: { showGlobalSearch = false },
+                onNavigate: { entry, chatFilename in
+                    showGlobalSearch = false
+                    characterListVM.selectCharacter(entry)
+                    if let chatFilename = chatFilename {
+                        // Load the specific chat
+                        let charName = entry.card.data.name
+                        if let session = try? appState.chatStorage.loadChat(
+                            characterName: charName,
+                            filename: chatFilename
+                        ) {
+                            appState.currentChat = session
+                        }
+                    }
+                }
+            )
+            .frame(minWidth: 600, minHeight: 500)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .globalSearch)) { _ in
+            showGlobalSearch = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showOnboarding)) { _ in
+            showOnboarding = true
         }
     }
 
@@ -223,7 +260,7 @@ struct MainView: View {
             WorldInfoListView(viewModel: worldInfoVM)
 
         case .personas:
-            PersonaPageView(personaVM: personaVM)
+            PersonaPageView(personaVM: personaVM, appState: appState)
 
         case nil:
             welcomeView

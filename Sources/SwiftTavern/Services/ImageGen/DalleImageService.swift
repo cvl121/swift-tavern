@@ -4,8 +4,10 @@ import Foundation
 struct DalleImageService: ImageGenerationService {
     func generateImage(
         prompt: String,
+        negativePrompt: String? = nil,
         settings: ImageGenerationSettings,
-        apiKey: String
+        apiKey: String,
+        referenceImage: Data? = nil
     ) async throws -> Data {
         let baseURL = settings.baseURL ?? "https://api.openai.com"
         guard let url = URL(string: "\(baseURL)/v1/images/generations") else {

@@ -40,6 +40,12 @@ final class ChatViewModel {
     var imageGenerationError: String?
     var messagesSinceLastImage = 0
 
+    // Image prompt editor
+    var showingImagePromptEditor = false
+    var imageEditorPrompt = ""
+    var imageEditorNegativePrompt = ""
+    var isAutoGeneratingPrompt = false
+
     // Undo stack
     private var undoStack: [(description: String, messages: [ChatMessage])] = []
     private let maxUndoSteps = 10
@@ -50,9 +56,35 @@ final class ChatViewModel {
     /// 0 = firstMes, 1..N = alternateGreetings[0..N-1]
     var greetingSwipeIndex: Int = 0
 
+    /// Saved scroll anchor per chat (maps chat filename → message ID to scroll to)
+    private var savedScrollAnchors: [String: String] = [:]
+
+    /// Save the current scroll position for the active chat
+    func saveScrollPosition(visibleMessageID: String?) {
+        guard let filename = appState?.currentChat?.filename,
+              let messageID = visibleMessageID else { return }
+        savedScrollAnchors[filename] = messageID
+    }
+
+    /// Get the saved scroll anchor for the active chat (nil = scroll to bottom)
+    func savedScrollAnchor() -> String? {
+        guard let filename = appState?.currentChat?.filename else { return nil }
+        return savedScrollAnchors[filename]
+    }
+
+    /// Clear saved anchor for the active chat (e.g., when user scrolls to bottom)
+    func clearScrollAnchor() {
+        guard let filename = appState?.currentChat?.filename else { return }
+        savedScrollAnchors.removeValue(forKey: filename)
+    }
+
     private weak var appState: AppState?
     private var generationTask: Task<Void, Never>?
     private static let streamTimeoutSeconds: Double = 120
+    /// Buffer for accumulating streaming chunks before UI update
+    private var streamBuffer = ""
+    private var lastStreamFlush = Date.distantPast
+    private static let streamFlushInterval: TimeInterval = 0.05 // 50ms
 
     init(appState: AppState) {
         self.appState = appState
@@ -71,6 +103,16 @@ final class ChatViewModel {
             return Array(allMessages.suffix(limit))
         }
         return allMessages
+    }
+
+    /// Display messages with their original indices, filtered by bookmark state.
+    /// Pre-computed to avoid recalculating in the view body on every render.
+    var indexedDisplayMessages: [(offset: Int, element: ChatMessage)] {
+        let all = displayMessages
+        if showingBookmarksOnly {
+            return all.enumerated().filter { $0.element.isBookmarked }
+        }
+        return Array(all.enumerated())
     }
 
     /// Truncate a message for display if a length limit is set
@@ -93,7 +135,8 @@ final class ChatViewModel {
     }
 
     var userName: String {
-        appState?.settings.userName ?? "User"
+        guard let appState else { return "User" }
+        return appState.effectiveUserName(for: appState.selectedCharacter)
     }
 
     /// Persist the current state of a chat session to disk
@@ -161,7 +204,8 @@ final class ChatViewModel {
 
         let worldInfoEntries = resolveWorldInfoEntries(for: character, appState: appState)
 
-        let persona = appState.personas.first { $0.name == appState.settings.userName }
+        let persona = appState.effectivePersona(for: character)
+        let userName = appState.effectiveUserName(for: character)
 
         // Inject image generation prompt if LLM-triggered mode is active
         let imgSettings = appState.settings.imageGenerationSettings
@@ -171,7 +215,7 @@ final class ChatViewModel {
         let llmMessages = PromptBuilder.buildMessages(
             character: character.card.data,
             chatHistory: chatHistory,
-            userName: appState.settings.userName,
+            userName: userName,
             systemPrompt: appState.settings.defaultSystemPrompt,
             worldInfoEntries: worldInfoEntries,
             persona: persona,
@@ -188,13 +232,27 @@ final class ChatViewModel {
                 if shouldStream {
                     let stream = service.sendMessage(messages: llmMessages, config: config)
 
-                    // Timeout wrapper
+                    // Timeout wrapper with buffered streaming
+                    await MainActor.run { self.streamBuffer = "" }
                     try await withThrowingTaskGroup(of: Void.self) { group in
                         group.addTask {
                             for try await chunk in stream {
                                 try Task.checkCancellation()
                                 await MainActor.run {
-                                    self.streamingText += chunk
+                                    self.streamBuffer += chunk
+                                    let now = Date()
+                                    if now.timeIntervalSince(self.lastStreamFlush) >= Self.streamFlushInterval {
+                                        self.streamingText += self.streamBuffer
+                                        self.streamBuffer = ""
+                                        self.lastStreamFlush = now
+                                    }
+                                }
+                            }
+                            // Flush remaining buffer
+                            await MainActor.run {
+                                if !self.streamBuffer.isEmpty {
+                                    self.streamingText += self.streamBuffer
+                                    self.streamBuffer = ""
                                 }
                             }
                         }
@@ -279,6 +337,16 @@ final class ChatViewModel {
         streamingText = ""
         isGenerating = false
         messagesSinceLastImage += 1
+
+        // Mark conversation as unread if the user is not viewing it
+        if let charFilename = appState.selectedCharacter?.filename {
+            let isViewingThisChat = appState.selectedSidebarItem == .character(charFilename)
+                && NSApplication.shared.isActive
+            if !isViewingThisChat {
+                appState.markUnread(characterFilename: charFilename)
+            }
+        }
+
         checkAutoImageTrigger()
     }
 
@@ -343,12 +411,16 @@ final class ChatViewModel {
                     imgSettings: imgSettings
                 )
 
-                // Step 2: Generate the image
+                // Step 2: Generate the image (with optional reference image)
                 let service = appState.imageGenService()
+                let refImage: Data? = (imgSettings.useReferenceImage && imgSettings.provider.supportsReferenceImage)
+                    ? character.avatarData : nil
                 let imageData = try await service.generateImage(
                     prompt: scenePrompt,
+                    negativePrompt: nil,
                     settings: imgSettings,
-                    apiKey: apiKey
+                    apiKey: apiKey,
+                    referenceImage: refImage
                 )
 
                 // Step 3: Save image to disk
@@ -385,8 +457,114 @@ final class ChatViewModel {
         }
     }
 
+    /// Open the image prompt editor, pre-filling from the last image in this conversation
+    func openImagePromptEditor() {
+        guard let appState else { return }
+        // Pre-fill from last image message's prompt in current chat
+        let lastImagePrompt = appState.currentChat?.messages
+            .last(where: { $0.hasImage })?.imagePrompt ?? ""
+        imageEditorPrompt = lastImagePrompt
+        imageEditorNegativePrompt = ""
+        showingImagePromptEditor = true
+    }
+
+    /// Auto-generate a prompt from the current scene using the LLM
+    func autoGeneratePromptForEditor() {
+        guard let appState, !isAutoGeneratingPrompt else { return }
+        guard let character = appState.selectedCharacter else { return }
+        let imgSettings = appState.settings.imageGenerationSettings
+
+        isAutoGeneratingPrompt = true
+
+        Task {
+            do {
+                let prompt = try await generateScenePrompt(
+                    character: character,
+                    appState: appState,
+                    imgSettings: imgSettings
+                )
+                await MainActor.run {
+                    imageEditorPrompt = prompt
+                    isAutoGeneratingPrompt = false
+                }
+            } catch {
+                await MainActor.run {
+                    imageGenerationError = error.localizedDescription
+                    isAutoGeneratingPrompt = false
+                }
+            }
+        }
+    }
+
+    /// Generate an image using the prompt from the editor (bypasses LLM summarization)
+    func generateImageWithCustomPrompt() {
+        guard let appState, !isGeneratingImage else { return }
+        guard let character = appState.selectedCharacter else { return }
+
+        let imgSettings = appState.settings.imageGenerationSettings
+        let apiKey = appState.imageGenAPIKey()
+        guard !apiKey.isEmpty else {
+            imageGenerationError = "Image generation API key is not configured"
+            return
+        }
+
+        let prompt = imageEditorPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else {
+            imageGenerationError = "Enter an image prompt first"
+            return
+        }
+
+        let negPrompt = imageEditorNegativePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        showingImagePromptEditor = false
+        isGeneratingImage = true
+        imageGenerationError = nil
+
+        Task {
+            do {
+                let service = appState.imageGenService()
+                let refImage: Data? = (imgSettings.useReferenceImage && imgSettings.provider.supportsReferenceImage)
+                    ? character.avatarData : nil
+                let imageData = try await service.generateImage(
+                    prompt: prompt,
+                    negativePrompt: negPrompt.isEmpty ? nil : negPrompt,
+                    settings: imgSettings,
+                    apiKey: apiKey,
+                    referenceImage: refImage
+                )
+
+                let charName = character.card.data.name
+                let filename = saveImageToDisk(
+                    imageData: imageData,
+                    characterName: charName,
+                    appState: appState
+                )
+
+                await MainActor.run {
+                    let imageMessage = ChatMessage(
+                        name: charName,
+                        isUser: false,
+                        mes: "*A scene unfolds...*",
+                        imageURL: filename,
+                        imagePrompt: prompt
+                    )
+                    appState.currentChat?.messages.append(imageMessage)
+                    rewriteCurrentChat()
+                    messagesSinceLastImage = 0
+                    isGeneratingImage = false
+                    appState.devLogger.log(.info, "[ImageGen] Custom image generated | Prompt: \(prompt.prefix(100))...")
+                }
+            } catch {
+                await MainActor.run {
+                    imageGenerationError = error.localizedDescription
+                    isGeneratingImage = false
+                    appState.devLogger.log(.error, "[ImageGen] Error: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
     /// Use the main LLM to distill the current scene into an image prompt
-    private func generateScenePrompt(
+    func generateScenePrompt(
         character: CharacterEntry,
         appState: AppState,
         imgSettings: ImageGenerationSettings
@@ -401,7 +579,7 @@ final class ChatViewModel {
         let sceneMessages = ScenePromptBuilder.buildMessages(
             character: character.card.data,
             recentMessages: chatHistory,
-            userName: appState.settings.userName,
+            userName: appState.effectiveUserName(for: character),
             template: imgSettings.scenePromptTemplate
         )
 
@@ -462,8 +640,12 @@ final class ChatViewModel {
         generationTask?.cancel()
         generationTask = nil
 
-        if !streamingText.isEmpty {
-            pendingPartialText = streamingText
+        // Include any buffered but unflushed text
+        let fullText = streamingText + streamBuffer
+        streamBuffer = ""
+
+        if !fullText.isEmpty {
+            pendingPartialText = fullText
             streamingText = ""
             isGenerating = false
             showStopOptions = true
@@ -647,7 +829,7 @@ final class ChatViewModel {
         guard let appState, let character = appState.selectedCharacter else { return }
         appState.currentChat = try? appState.chatStorage.createChat(
             characterName: character.card.data.name,
-            userName: appState.settings.userName,
+            userName: appState.effectiveUserName(for: character),
             firstMessage: character.card.data.firstMes
         )
         greetingSwipeIndex = 0
@@ -781,7 +963,7 @@ final class ChatViewModel {
         do {
             var newSession = try appState.chatStorage.createChat(
                 characterName: charName,
-                userName: appState.settings.userName,
+                userName: appState.effectiveUserName(for: character),
                 firstMessage: nil
             )
             newSession.messages = forkedMessages
@@ -828,12 +1010,13 @@ final class ChatViewModel {
         let chatHistory = appState.currentChat?.messages ?? []
         let worldInfoEntries = resolveWorldInfoEntries(for: character, appState: appState)
 
-        let persona = appState.personas.first { $0.name == appState.settings.userName }
+        let persona = appState.effectivePersona(for: character)
+        let effectiveName = appState.effectiveUserName(for: character)
 
         let llmMessages = PromptBuilder.buildMessages(
             character: character.card.data,
             chatHistory: chatHistory,
-            userName: appState.settings.userName,
+            userName: effectiveName,
             systemPrompt: appState.settings.defaultSystemPrompt,
             worldInfoEntries: worldInfoEntries,
             persona: persona
@@ -846,21 +1029,33 @@ final class ChatViewModel {
 
     // MARK: - Token Count Estimation
 
+    private var cachedTokenCount: Int = 0
+    private var cachedTokenKey: String = ""
+
     var estimatedTokenCount: Int {
         guard let appState, let character = appState.selectedCharacter else { return 0 }
         let chatHistory = appState.currentChat?.messages ?? []
         guard !chatHistory.isEmpty else { return 0 }
+
+        // Cache key based on factors that affect token count
+        let key = "\(character.filename)-\(chatHistory.count)-\(chatHistory.last?.mes.count ?? 0)-\(appState.settings.defaultSystemPrompt.count)"
+        if key == cachedTokenKey { return cachedTokenCount }
+
         let worldInfoEntries = resolveWorldInfoEntries(for: character, appState: appState)
-        let persona = appState.personas.first { $0.name == appState.settings.userName }
+        let persona = appState.effectivePersona(for: character)
+        let effectiveName = appState.effectiveUserName(for: character)
         let llmMessages = PromptBuilder.buildMessages(
             character: character.card.data,
             chatHistory: chatHistory,
-            userName: appState.settings.userName,
+            userName: effectiveName,
             systemPrompt: appState.settings.defaultSystemPrompt,
             worldInfoEntries: worldInfoEntries,
             persona: persona
         )
-        return TokenEstimator.estimateMessages(llmMessages)
+        let count = TokenEstimator.estimateMessages(llmMessages)
+        cachedTokenCount = count
+        cachedTokenKey = key
+        return count
     }
 
     // MARK: - Keyboard Navigation
@@ -997,7 +1192,7 @@ final class ChatViewModel {
            let messagesJson = json["messages"] as? [[String: Any]] {
             if var session = try? appState.chatStorage.createChat(
                 characterName: charName,
-                userName: appState.settings.userName,
+                userName: appState.effectiveUserName(for: appState.selectedCharacter),
                 firstMessage: nil
             ) {
                 for msgJson in messagesJson {

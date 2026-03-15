@@ -27,7 +27,7 @@ final class OpenRouterService: LLMService {
                     request.setValue("https://github.com/SwiftTavern", forHTTPHeaderField: "HTTP-Referer")
 
                     let params = config.generationParams
-                    let body: [String: Any] = [
+                    var body: [String: Any] = [
                         "model": config.model,
                         "messages": messages.map { msg -> [String: String] in
                             ["role": msg.role.rawValue, "content": msg.content]
@@ -39,6 +39,14 @@ final class OpenRouterService: LLMService {
                         "presence_penalty": params.presencePenalty,
                         "stream": true,
                     ]
+
+                    // OpenRouter passes through provider-specific params
+                    if params.minP > 0 { body["min_p"] = params.minP }
+                    if params.topK > 0 { body["top_k"] = params.topK }
+                    if params.topA > 0 { body["top_a"] = params.topA }
+                    if params.repetitionPenalty != 1.0 { body["repetition_penalty"] = params.repetitionPenalty }
+                    if !params.stopSequences.isEmpty { body["stop"] = params.stopSequences }
+                    if params.seedValue >= 0 { body["seed"] = params.seedValue }
 
                     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

@@ -35,6 +35,13 @@ final class CharacterStorageService {
         return CharacterEntry(filename: fileURL.lastPathComponent, card: card, avatarData: data)
     }
 
+    /// Load a single character by filename from the characters directory.
+    /// Use this for incremental updates instead of reloading all characters.
+    func loadCharacter(byFilename filename: String) throws -> CharacterEntry {
+        let fileURL = directoryManager.charactersDirectory.appendingPathComponent(filename)
+        return try loadCharacter(from: fileURL)
+    }
+
     /// Save a character card (creates or updates)
     func save(card: TavernCardV2, avatarData: Data?, filename: String? = nil) throws -> String {
         let safeName = (filename ?? (card.data.name.sanitizedFilename() + ".png"))

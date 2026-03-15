@@ -7,6 +7,9 @@ struct ChatHistoryPickerView: View {
     let onSelect: (String) -> Void
     let onNew: () -> Void
     let onDelete: () -> Void
+    var onDeleteChat: ((String) -> Void)? = nil
+
+    @State private var hoveredChat: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -61,6 +64,22 @@ struct ChatHistoryPickerView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             onSelect(chat.filename)
+                        }
+                        .onHover { hovering in
+                            hoveredChat = hovering ? chat.filename : nil
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(hoveredChat == chat.filename ? Color.primary.opacity(0.06) : Color.clear)
+                        )
+                        .contextMenu {
+                            Button("Load Chat") {
+                                onSelect(chat.filename)
+                            }
+                            Divider()
+                            Button("Delete", role: .destructive) {
+                                onDeleteChat?(chat.filename)
+                            }
                         }
                     }
                 }

@@ -4,8 +4,10 @@ import Foundation
 struct StabilityImageService: ImageGenerationService {
     func generateImage(
         prompt: String,
+        negativePrompt: String? = nil,
         settings: ImageGenerationSettings,
-        apiKey: String
+        apiKey: String,
+        referenceImage: Data? = nil
     ) async throws -> Data {
         let baseURL = settings.baseURL ?? "https://api.stability.ai"
         let model = settings.model.isEmpty ? "stable-diffusion-xl-1024-v1-0" : settings.model
@@ -20,10 +22,15 @@ struct StabilityImageService: ImageGenerationService {
         request.setValue(apiKey, forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 120
 
+        var textPrompts: [[String: Any]] = [
+            ["text": prompt, "weight": 1.0]
+        ]
+        if let neg = negativePrompt, !neg.isEmpty {
+            textPrompts.append(["text": neg, "weight": -1.0])
+        }
+
         let body: [String: Any] = [
-            "text_prompts": [
-                ["text": prompt, "weight": 1.0]
-            ],
+            "text_prompts": textPrompts,
             "cfg_scale": 7,
             "height": settings.imageSize.height,
             "width": settings.imageSize.width,

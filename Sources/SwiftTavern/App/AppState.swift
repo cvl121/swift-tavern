@@ -42,6 +42,12 @@ final class AppState {
     var isSaving = false
     private var toastDismissTask: DispatchWorkItem?
 
+    /// Character filenames that have new unread responses
+    var unreadCharacters: Set<String> = []
+
+    /// Cached chat metadata (filenames + dates) per character, loaded lazily on selection
+    var chatMetadataCache: [String: [(filename: String, date: Date?)]] = [:]
+
     func showToast(_ message: String, isError: Bool = false) {
         toastDismissTask?.cancel()
         toastMessage = message
@@ -138,7 +144,7 @@ final class AppState {
         settings.activeChatPerCharacter[charFilename] = chatFilename
     }
 
-    /// Debounced auto-save settings (500ms delay)
+    /// Debounced auto-save settings (500ms delay to reduce serialization during rapid UI changes)
     private func scheduleSettingsSave() {
         settingsSaveTask?.cancel()
         let task = DispatchWorkItem { [weak self] in
@@ -189,6 +195,28 @@ final class AppState {
         ImageGenServiceFactory.create(for: settings.imageGenerationSettings.provider)
     }
 
+    /// Resolve the effective persona for a character.
+    /// Returns character-specific persona if set, otherwise the global active persona.
+    func effectivePersona(for character: CharacterEntry? = nil) -> Persona? {
+        if let character,
+           let personaName = settings.characterPersonas[character.filename],
+           let persona = personas.first(where: { $0.name == personaName }) {
+            return persona
+        }
+        return personas.first { $0.name == settings.userName }
+    }
+
+    /// Resolve the effective user name for a character.
+    /// Returns character-specific persona name if set, otherwise the global userName.
+    func effectiveUserName(for character: CharacterEntry? = nil) -> String {
+        if let character,
+           let personaName = settings.characterPersonas[character.filename],
+           personas.contains(where: { $0.name == personaName }) {
+            return personaName
+        }
+        return settings.userName
+    }
+
     /// Get the API key for the current image gen provider.
     /// If useSharedAPIKey is enabled and the provider overlaps with a text provider, uses that key.
     func imageGenAPIKey() -> String {
@@ -211,10 +239,51 @@ final class AppState {
         return dir
     }
 
+    /// Load chat metadata (filenames + dates) for a character, using cache when available.
+    /// This avoids loading full chat sessions until one is actually selected.
+    func loadChatMetadata(for characterName: String, forceReload: Bool = false) -> [(filename: String, date: Date?)] {
+        let key = characterName.sanitizedFilename()
+        if !forceReload, let cached = chatMetadataCache[key] {
+            return cached
+        }
+        let metadata = (try? chatStorage.listChats(for: characterName)) ?? []
+        chatMetadataCache[key] = metadata
+        return metadata
+    }
+
+    /// Invalidate cached chat metadata for a character (call after creating/deleting chats)
+    func invalidateChatMetadata(for characterName: String) {
+        let key = characterName.sanitizedFilename()
+        chatMetadataCache.removeValue(forKey: key)
+    }
+
     /// Track active character for session restoration
     func setActiveCharacter(_ entry: CharacterEntry?) {
         selectedCharacter = entry
         settings.activeCharacter = entry?.filename
+        // Clear unread when switching to a character
+        if let filename = entry?.filename {
+            markRead(characterFilename: filename)
+        }
+    }
+
+    /// Mark a character's conversation as having an unread response
+    func markUnread(characterFilename: String) {
+        unreadCharacters.insert(characterFilename)
+        updateDockBadge()
+    }
+
+    /// Clear the unread state for a character
+    func markRead(characterFilename: String) {
+        if unreadCharacters.remove(characterFilename) != nil {
+            updateDockBadge()
+        }
+    }
+
+    /// Update the dock icon badge to show number of unread conversations
+    private func updateDockBadge() {
+        let count = unreadCharacters.count
+        NSApplication.shared.dockTile.badgeLabel = count > 0 ? "\(count)" : nil
     }
 
     /// Create a default "Assistant" character on first launch

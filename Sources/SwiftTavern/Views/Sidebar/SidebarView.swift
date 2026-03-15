@@ -10,6 +10,9 @@ struct SidebarView: View {
     @State private var conversationSearchText = ""
     @State private var showGroupDeleteConfirmation = false
     @State private var pendingDeleteGroup: CharacterGroup?
+    @State private var showConversationDeleteConfirmation = false
+    @State private var pendingDeleteConversationEntry: CharacterEntry?
+    @State private var pendingDeleteMessageCount: Int = 0
     @State private var chatDateCache: [String: Date] = [:]
     @State private var hoveredCharacter: String?
     @State private var hoveredGroup: String?
@@ -71,7 +74,7 @@ struct SidebarView: View {
         ) { result in
             characterListVM.showingExporter = false
         }
-        // Delete confirmation
+        // Delete character confirmation
         .alert("Delete Character", isPresented: $characterListVM.showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {
                 characterListVM.pendingDeleteEntry = nil
@@ -80,11 +83,22 @@ struct SidebarView: View {
                 characterListVM.confirmDeleteCharacter()
             }
         } message: {
-            Text("Are you sure you want to delete \"\(characterListVM.pendingDeleteEntry?.card.data.name ?? "")\"? This cannot be undone.")
+            Text("Are you sure you want to delete \"\(characterListVM.pendingDeleteEntry?.card.data.name ?? "")\"? This will remove the character and all their chats. This cannot be undone.")
+        }
+        // Delete conversation confirmation
+        .alert("Delete Conversation", isPresented: $showConversationDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                pendingDeleteConversationEntry = nil
+            }
+            Button("Delete", role: .destructive) {
+                deleteCurrentConversation()
+            }
+        } message: {
+            Text("Are you sure you want to delete the current conversation with \"\(pendingDeleteConversationEntry?.card.data.name ?? "")\"\(pendingDeleteMessageCount > 0 ? " (\(pendingDeleteMessageCount) messages)" : "")? This cannot be undone.")
         }
         .onAppear { refreshChatDates() }
         .onChange(of: appState.characters.count) { _, _ in refreshChatDates() }
-        .onChange(of: appState.currentChat?.messages.count) { _, _ in refreshChatDates() }
+        .onChange(of: appState.currentChat?.messages.count) { _, _ in refreshCurrentChatDate() }
         // Group delete confirmation
         .alert("Delete Group", isPresented: $showGroupDeleteConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -150,7 +164,9 @@ struct SidebarView: View {
             entry: entry,
             lastMessageDate: lastChatDate(for: entry),
             isSelected: appState.selectedSidebarItem == .character(entry.filename),
-            isHovered: hoveredCharacter == entry.filename
+            isHovered: hoveredCharacter == entry.filename,
+            isPinned: appState.settings.pinnedCharacters.contains(entry.filename),
+            hasUnread: appState.unreadCharacters.contains(entry.filename)
         )
         .onHover { hovering in
             hoveredCharacter = hovering ? entry.filename : nil
@@ -159,15 +175,30 @@ struct SidebarView: View {
             characterListVM.selectCharacter(entry)
         }
         .contextMenu {
-            Button("Edit Character") {
-                characterListVM.editCharacter(entry)
-            }
-            Button("Export Character") {
-                characterListVM.exportCharacter(entry)
+            let isPinned = appState.settings.pinnedCharacters.contains(entry.filename)
+            Button(isPinned ? "Unpin" : "Pin to Top") {
+                if isPinned {
+                    appState.settings.pinnedCharacters.removeAll { $0 == entry.filename }
+                } else {
+                    appState.settings.pinnedCharacters.append(entry.filename)
+                }
+                appState.saveSettings()
             }
             Divider()
-            Button("Delete", role: .destructive) {
-                characterListVM.requestDeleteCharacter(entry)
+            Button("Delete Conversation", role: .destructive) {
+                pendingDeleteConversationEntry = entry
+                // Count messages in the conversation to show in confirmation
+                if appState.selectedCharacter?.filename == entry.filename,
+                   let chat = appState.currentChat {
+                    pendingDeleteMessageCount = chat.messages.count
+                } else if let chats = try? appState.chatStorage.listChats(for: entry.card.data.name),
+                          let mostRecent = chats.first,
+                          let chat = try? appState.chatStorage.loadChat(characterName: entry.card.data.name, filename: mostRecent.filename) {
+                    pendingDeleteMessageCount = chat.messages.count
+                } else {
+                    pendingDeleteMessageCount = 0
+                }
+                showConversationDeleteConfirmation = true
             }
         }
     }
@@ -256,7 +287,7 @@ struct SidebarView: View {
     // MARK: - Navigation Section
 
     private var navigationSection: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 1) {
             sidebarNavButton("Characters", icon: "person.text.rectangle", item: .characters)
             sidebarNavButton("World Lore", icon: "globe", item: .worldLore)
             sidebarNavButton("Personas", icon: "person.circle", item: .personas)
@@ -267,6 +298,7 @@ struct SidebarView: View {
             sidebarNavButton("Settings", icon: "gear", item: .settings)
         }
         .padding(.vertical, 4)
+        .padding(.horizontal, 4)
     }
 
     private func sidebarNavButton(_ title: String, icon: String, item: SidebarItem) -> some View {
@@ -274,13 +306,13 @@ struct SidebarView: View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 12))
-                    .frame(width: 16)
+                    .frame(width: 18)
                 Text(title)
                     .font(.system(size: 12))
                 Spacer()
             }
-            .padding(.vertical, 6)
-            .padding(.leading, 4)
+            .padding(.vertical, 5)
+            .padding(.horizontal, 8)
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 6)
@@ -307,11 +339,23 @@ struct SidebarView: View {
     }
 
     private var filteredConversations: [CharacterEntry] {
+        let base: [CharacterEntry]
         if conversationSearchText.isEmpty {
-            return characterListVM.filteredCharacters
+            base = characterListVM.filteredCharacters
+        } else {
+            base = characterListVM.filteredCharacters.filter {
+                $0.card.data.name.localizedCaseInsensitiveContains(conversationSearchText)
+            }
         }
-        return characterListVM.filteredCharacters.filter {
-            $0.card.data.name.localizedCaseInsensitiveContains(conversationSearchText)
+        let pinned = Set(appState.settings.pinnedCharacters)
+        return base.sorted { a, b in
+            let aPinned = pinned.contains(a.filename)
+            let bPinned = pinned.contains(b.filename)
+            if aPinned != bPinned { return aPinned }
+            // Within each group, sort by most recent chat date
+            let aDate = chatDateCache[a.card.data.name] ?? .distantPast
+            let bDate = chatDateCache[b.card.data.name] ?? .distantPast
+            return aDate > bDate
         }
     }
 
@@ -341,6 +385,41 @@ struct SidebarView: View {
         return handled
     }
 
+    /// Delete the current conversation for the pending entry
+    private func deleteCurrentConversation() {
+        guard let entry = pendingDeleteConversationEntry else { return }
+        let name = entry.card.data.name
+
+        // If this character is currently selected, delete the active chat
+        if appState.selectedCharacter?.filename == entry.filename,
+           let chat = appState.currentChat {
+            try? appState.chatStorage.deleteChat(characterName: name, filename: chat.filename)
+            // Load the next most recent chat, or create a new one
+            if let chats = try? appState.chatStorage.listChats(for: name),
+               let mostRecent = chats.first {
+                appState.currentChat = try? appState.chatStorage.loadChat(
+                    characterName: name,
+                    filename: mostRecent.filename
+                )
+            } else {
+                appState.currentChat = try? appState.chatStorage.createChat(
+                    characterName: name,
+                    userName: appState.settings.userName,
+                    firstMessage: nil
+                )
+            }
+        } else {
+            // Character not currently selected — delete their most recent chat
+            if let chats = try? appState.chatStorage.listChats(for: name),
+               let mostRecent = chats.first {
+                try? appState.chatStorage.deleteChat(characterName: name, filename: mostRecent.filename)
+            }
+        }
+
+        pendingDeleteConversationEntry = nil
+        refreshChatDates()
+    }
+
     /// Refresh all chat dates in one pass
     private func refreshChatDates() {
         var cache: [String: Date] = [:]
@@ -353,6 +432,16 @@ struct SidebarView: View {
         }
         chatDateCache = cache
     }
+
+    /// Refresh only the current character's chat date (avoids iterating all characters on each message)
+    private func refreshCurrentChatDate() {
+        guard let character = appState.selectedCharacter else { return }
+        let name = character.card.data.name
+        if let chats = try? appState.chatStorage.listChats(for: name),
+           let recent = chats.first {
+            chatDateCache[name] = recent.date
+        }
+    }
 }
 
 /// A conversation row showing character avatar, name, and last message date
@@ -361,20 +450,38 @@ private struct ConversationRowView: View {
     let lastMessageDate: Date?
     let isSelected: Bool
     var isHovered: Bool = false
+    var isPinned: Bool = false
+    var hasUnread: Bool = false
 
     var body: some View {
         HStack(spacing: 10) {
-            AvatarImageView(imageData: entry.avatarData, name: entry.card.data.name, size: AvatarImageView.sizeMedium)
+            ZStack(alignment: .topTrailing) {
+                AvatarImageView(imageData: entry.avatarData, name: entry.card.data.name, size: AvatarImageView.sizeMedium)
+                if hasUnread {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(Color(.windowBackgroundColor), lineWidth: 1.5))
+                        .offset(x: 2, y: -2)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.card.data.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(entry.card.data.name)
+                        .font(.system(size: 13, weight: hasUnread ? .bold : .medium))
+                        .lineLimit(1)
+                    if isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 8))
+                            .foregroundColor(.secondary)
+                    }
+                }
 
                 if let date = lastMessageDate {
                     Text(date.relativeDisplayString)
                         .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(hasUnread ? .accentColor : .secondary)
                         .lineLimit(1)
                 } else if !entry.card.data.tags.isEmpty {
                     Text(entry.card.data.tags.prefix(3).joined(separator: ", "))

@@ -110,6 +110,9 @@ final class OpenAIService: LLMService {
         if !params.stopSequences.isEmpty {
             body["stop"] = params.stopSequences
         }
+        if params.seedValue >= 0 {
+            body["seed"] = params.seedValue
+        }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request

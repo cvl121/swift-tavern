@@ -7,15 +7,73 @@ struct MarkdownTextView: View {
     var chatStyle: ChatStyle?
     @Environment(\.colorScheme) private var colorScheme
 
+    // MARK: - AttributedString Cache
+
+    /// Cache for parsed and styled AttributedString results to avoid re-parsing on every render.
+    /// Keyed by a hash of (text + style properties + colorScheme).
+    private static var attributedStringCache = NSCache<NSString, CachedAttributedString>()
+    private static let cacheSetupOnce: Void = {
+        attributedStringCache.countLimit = 500
+    }()
+
+    /// Wrapper to store AttributedString in NSCache (which requires NSObject values)
+    private final class CachedAttributedString: NSObject {
+        let value: AttributedString
+        init(_ value: AttributedString) { self.value = value }
+    }
+
+    /// Cache for parsed block arrays to avoid re-parsing on every render
+    private static var blockCache = NSCache<NSString, CachedBlocks>()
+    private final class CachedBlocks: NSObject {
+        let value: [Block]
+        init(_ value: [Block]) { self.value = value }
+    }
+
+    private static func cacheKey(text: String, style: ChatStyle?, isDark: Bool, fontSizeOverride: CGFloat?, bold: Bool) -> String {
+        var hasher = Hasher()
+        hasher.combine(text)
+        hasher.combine(isDark)
+        hasher.combine(fontSizeOverride)
+        hasher.combine(bold)
+        if let s = style {
+            hasher.combine(s.fontSize)
+            hasher.combine(s.quotedTextColor.r)
+            hasher.combine(s.quotedTextColor.g)
+            hasher.combine(s.quotedTextColor.b)
+            hasher.combine(s.italicActionColor.r)
+            hasher.combine(s.italicActionColor.g)
+            hasher.combine(s.italicActionColor.b)
+            hasher.combine(s.narrativeColor.r)
+            hasher.combine(s.narrativeColor.g)
+            hasher.combine(s.narrativeColor.b)
+            hasher.combine(s.thinkingColor.r)
+            hasher.combine(s.thinkingColor.g)
+            hasher.combine(s.thinkingColor.b)
+        }
+        return "\(hasher.finalize())"
+    }
+
     var body: some View {
+        let _ = Self.cacheSetupOnce
         let style = chatStyle.map { ChatStyle.adaptedForAppearance($0, isDark: colorScheme == .dark) }
-        let blocks = parseBlocks(text)
+        let blocks = cachedParseBlocks(text)
 
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 renderBlock(block, style: style)
             }
         }
+    }
+
+    /// Cached version of parseBlocks to avoid re-parsing on every render
+    private func cachedParseBlocks(_ text: String) -> [Block] {
+        let key = "\(text.hashValue)" as NSString
+        if let cached = Self.blockCache.object(forKey: key) {
+            return cached.value
+        }
+        let blocks = parseBlocks(text)
+        Self.blockCache.setObject(CachedBlocks(blocks), forKey: key)
+        return blocks
     }
 
     // MARK: - Block Parsing
@@ -196,7 +254,7 @@ struct MarkdownTextView: View {
     }
 
     private func headingSize(_ level: Int) -> CGFloat {
-        let base = chatStyle?.fontSize ?? 13
+        let base = chatStyle?.fontSize ?? ChatStyle.systemDefaultFontSize
         switch level {
         case 1: return base + 10
         case 2: return base + 6
@@ -211,13 +269,35 @@ struct MarkdownTextView: View {
     @ViewBuilder
     private func renderInline(_ text: String, style: ChatStyle?, fontSizeOverride: CGFloat? = nil, bold: Bool = false) -> some View {
         if let style {
-            Text(styledInline(text, style: style, fontSizeOverride: fontSizeOverride, bold: bold))
+            Text(cachedStyledInline(text, style: style, fontSizeOverride: fontSizeOverride, bold: bold))
                 .fixedSize(horizontal: false, vertical: true)
         } else {
-            Text(parseInlineMarkdown(text))
-                .font(.system(size: fontSizeOverride ?? 13, weight: bold ? .bold : .regular))
+            Text(cachedParseInlineMarkdown(text, fontSizeOverride: fontSizeOverride, bold: bold))
+                .font(.system(size: fontSizeOverride ?? ChatStyle.systemDefaultFontSize, weight: bold ? .bold : .regular))
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// Cached version of parseInlineMarkdown
+    private func cachedParseInlineMarkdown(_ text: String, fontSizeOverride: CGFloat? = nil, bold: Bool = false) -> AttributedString {
+        let key = Self.cacheKey(text: text, style: nil, isDark: colorScheme == .dark, fontSizeOverride: fontSizeOverride, bold: bold)
+        if let cached = Self.attributedStringCache.object(forKey: key as NSString) {
+            return cached.value
+        }
+        let result = parseInlineMarkdown(text)
+        Self.attributedStringCache.setObject(CachedAttributedString(result), forKey: key as NSString)
+        return result
+    }
+
+    /// Cached version of styledInline
+    private func cachedStyledInline(_ text: String, style: ChatStyle, fontSizeOverride: CGFloat? = nil, bold: Bool = false) -> AttributedString {
+        let key = Self.cacheKey(text: text, style: style, isDark: colorScheme == .dark, fontSizeOverride: fontSizeOverride, bold: bold)
+        if let cached = Self.attributedStringCache.object(forKey: key as NSString) {
+            return cached.value
+        }
+        let result = styledInline(text, style: style, fontSizeOverride: fontSizeOverride, bold: bold)
+        Self.attributedStringCache.setObject(CachedAttributedString(result), forKey: key as NSString)
+        return result
     }
 
     private func parseInlineMarkdown(_ text: String) -> AttributedString {
@@ -230,35 +310,128 @@ struct MarkdownTextView: View {
         return AttributedString(text)
     }
 
-    // MARK: - Text Category Detection
+    // MARK: - SillyTavern-Style Text Parsing
 
     /// Text category for coloring purposes
     private enum TextCategory {
         case dialogue   // "double quotes"
         case thinking   // (parentheses)
-        case action     // *asterisks* (handled via italic emphasis)
+        case action     // *asterisks*
         case narrative  // everything else
     }
 
-    /// Build a per-character category map for coloring
-    /// Priority: dialogue > thinking > narrative (action is handled via emphasis detection)
-    private func buildCategoryMap(for text: String) -> [TextCategory] {
-        let chars = Array(text)
-        var map = [TextCategory](repeating: .narrative, count: chars.count)
-        var i = 0
+    /// A segment of visible text with its formatting and color category
+    private struct TextSegment {
+        let text: String
+        let category: TextCategory
+        let isItalic: Bool
+        let isBold: Bool
+        let isCode: Bool
+    }
 
-        while i < chars.count {
+    /// Parse raw text into styled segments by scanning markers directly.
+    ///
+    /// This matches SillyTavern behavior:
+    /// - `*...*` → italic + action color (asterisks hidden)
+    /// - `**...**` → bold (asterisks hidden), keeps contextual color
+    /// - `***...***` → bold + italic + action color (asterisks hidden)
+    /// - `"..."` → dialogue color (quotes visible)
+    /// - `(...)` → thinking/OOC color (parens visible)
+    /// - `` `...` `` → monospace code (backticks hidden)
+    /// - Unclosed `*` → rest of text is action (SillyTavern greedy match)
+    /// - Color priority: dialogue > thinking > action > narrative
+    private func parseSegments(_ rawText: String) -> [TextSegment] {
+        let chars = Array(rawText)
+        let n = chars.count
+        guard n > 0 else { return [] }
+
+        // Per-character state
+        var isHidden = [Bool](repeating: false, count: n)
+        var isItalic = [Bool](repeating: false, count: n)
+        var isBold = [Bool](repeating: false, count: n)
+        var isCode = [Bool](repeating: false, count: n)
+        var category = [TextCategory](repeating: .narrative, count: n)
+
+        // Pass 0: Find inline code spans (backticks) — these override all other formatting
+        var i = 0
+        while i < n {
+            if chars[i] == "`" {
+                let start = i
+                i += 1
+                while i < n && chars[i] != "`" { i += 1 }
+                if i < n {
+                    isHidden[start] = true   // opening backtick
+                    isHidden[i] = true        // closing backtick
+                    for j in (start + 1)..<i {
+                        isCode[j] = true
+                    }
+                    i += 1
+                }
+                continue
+            }
+            i += 1
+        }
+
+        // Pass 1: Parse asterisk formatting (skip code spans)
+        i = 0
+        var italicOpen = false
+        var boldOpen = false
+        while i < n {
+            if isCode[i] || isHidden[i] { i += 1; continue }
+
+            if chars[i] == "*" {
+                // Count consecutive asterisks
+                var count = 0
+                let start = i
+                while i < n && chars[i] == "*" && !isCode[i] {
+                    count += 1
+                    i += 1
+                }
+
+                // Mark asterisks as hidden
+                for j in start..<(start + count) {
+                    isHidden[j] = true
+                }
+
+                if count >= 3 {
+                    boldOpen.toggle()
+                    italicOpen.toggle()
+                } else if count == 2 {
+                    boldOpen.toggle()
+                } else {
+                    italicOpen.toggle()
+                }
+                continue
+            }
+
+            isItalic[i] = italicOpen
+            isBold[i] = boldOpen
+            if italicOpen {
+                category[i] = .action
+            }
+            i += 1
+        }
+
+        // Pass 2: Quote and paren regions override color category
+        // Priority: dialogue > thinking > action > narrative
+        i = 0
+        while i < n {
+            if isHidden[i] || isCode[i] { i += 1; continue }
+
             // Detect "double-quoted dialogue"
             if chars[i] == "\"" {
                 let start = i
                 i += 1
-                while i < chars.count && chars[i] != "\"" {
+                while i < n {
+                    if chars[i] == "\"" && !isHidden[i] && !isCode[i] { break }
                     i += 1
                 }
-                if i < chars.count {
-                    // Mark the entire quoted region including the quote marks
+                if i < n {
+                    // Mark entire quoted region including quotes as dialogue
                     for j in start...i {
-                        map[j] = .dialogue
+                        if !isHidden[j] && !isCode[j] {
+                            category[j] = .dialogue
+                        }
                     }
                     i += 1
                 }
@@ -268,19 +441,19 @@ struct MarkdownTextView: View {
             // Detect (parenthesized thinking/OOC)
             if chars[i] == "(" {
                 let start = i
-                i += 1
                 var depth = 1
-                while i < chars.count && depth > 0 {
-                    if chars[i] == "(" { depth += 1 }
-                    else if chars[i] == ")" { depth -= 1 }
+                i += 1
+                while i < n && depth > 0 {
+                    if !isHidden[i] && !isCode[i] {
+                        if chars[i] == "(" { depth += 1 }
+                        else if chars[i] == ")" { depth -= 1 }
+                    }
                     i += 1
                 }
-                // Only color if we found a matching close paren
                 if depth == 0 {
                     for j in start..<i {
-                        // Don't override dialogue inside parens
-                        if map[j] == .narrative {
-                            map[j] = .thinking
+                        if !isHidden[j] && !isCode[j] && category[j] != .dialogue {
+                            category[j] = .thinking
                         }
                     }
                 }
@@ -290,92 +463,82 @@ struct MarkdownTextView: View {
             i += 1
         }
 
-        return map
+        // Build segments by grouping consecutive visible characters with same properties
+        var segments: [TextSegment] = []
+        var currentText = ""
+        var currentCategory: TextCategory = .narrative
+        var currentItalic = false
+        var currentBold = false
+        var currentCode = false
+
+        for j in 0..<n {
+            if isHidden[j] { continue }
+
+            let cat = isCode[j] ? .narrative : category[j]
+            let ital = isCode[j] ? false : isItalic[j]
+            let bld = isCode[j] ? false : isBold[j]
+            let code = isCode[j]
+
+            if !currentText.isEmpty && (cat != currentCategory || ital != currentItalic || bld != currentBold || code != currentCode) {
+                segments.append(TextSegment(text: currentText, category: currentCategory, isItalic: currentItalic, isBold: currentBold, isCode: currentCode))
+                currentText = ""
+            }
+
+            currentText.append(chars[j])
+            currentCategory = cat
+            currentItalic = ital
+            currentBold = bld
+            currentCode = code
+        }
+
+        if !currentText.isEmpty {
+            segments.append(TextSegment(text: currentText, category: currentCategory, isItalic: currentItalic, isBold: currentBold, isCode: currentCode))
+        }
+
+        return segments
     }
 
-    /// Parse inline markdown then apply chat style colors per character segment.
-    ///
-    /// Color priority (matches SillyTavern behavior):
-    /// - Quoted text `"..."` always gets dialogue color, even inside `*asterisks*`
-    /// - Parenthesized text `(...)` gets thinking color
-    /// - Italic text outside quotes/parens gets action/emote color
-    /// - Bold text keeps its contextual color
-    /// - All other text gets narrative color
+    /// Build a styled AttributedString from raw text by parsing markers directly.
+    /// This processes the raw text first (like SillyTavern) instead of relying on
+    /// markdown parsing, ensuring consistent color application.
     private func styledInline(_ text: String, style: ChatStyle, fontSizeOverride: CGFloat? = nil, bold: Bool = false) -> AttributedString {
-        var attributed = parseInlineMarkdown(text)
-        let plainText = String(attributed.characters)
-        let categoryMap = buildCategoryMap(for: plainText)
+        let segments = parseSegments(text)
+        var result = AttributedString()
+        let baseSize = fontSizeOverride ?? CGFloat(style.fontSize)
 
-        // Collect run info first (ranges and emphasis/strong status)
-        struct RunInfo {
-            let range: Range<AttributedString.Index>
-            let length: Int
-            let hasEmphasis: Bool
-            let hasStrong: Bool
-        }
-        var runs: [RunInfo] = []
-        for run in attributed.runs {
-            let len = attributed[run.range].characters.count
-            let intent = run.inlinePresentationIntent
-            let emphasis = intent?.contains(.emphasized) ?? false
-            let strong = intent?.contains(.stronglyEmphasized) ?? false
-            runs.append(RunInfo(range: run.range, length: len, hasEmphasis: emphasis, hasStrong: strong))
-        }
+        for segment in segments {
+            var attr = AttributedString(segment.text)
 
-        // Apply colors by splitting every run at category boundaries
-        var charOffset = 0
-        for runInfo in runs {
-            let runStart = charOffset
-            let runEnd = charOffset + runInfo.length
-
-            // Split this run into segments where category changes
-            var segStart = runStart
-            while segStart < runEnd {
-                let category: TextCategory = segStart < categoryMap.count ? categoryMap[segStart] : .narrative
-                var segEnd = segStart + 1
-                while segEnd < runEnd {
-                    let nextCategory: TextCategory = segEnd < categoryMap.count ? categoryMap[segEnd] : .narrative
-                    if nextCategory != category { break }
-                    segEnd += 1
-                }
-
-                // Convert character offsets to AttributedString indices
-                let segStartIdx = attributed.characters.index(runInfo.range.lowerBound, offsetBy: segStart - charOffset)
-                let segEndIdx = attributed.characters.index(runInfo.range.lowerBound, offsetBy: segEnd - charOffset)
-                let segRange = segStartIdx..<segEndIdx
-
-                // Apply color based on category, with italic override for actions
-                switch category {
+            // Apply color based on category
+            if segment.isCode {
+                attr.foregroundColor = style.narrativeColor.color
+            } else {
+                switch segment.category {
                 case .dialogue:
-                    attributed[segRange].foregroundColor = style.quotedTextColor.color
+                    attr.foregroundColor = style.quotedTextColor.color
                 case .thinking:
-                    attributed[segRange].foregroundColor = style.thinkingColor.color
+                    attr.foregroundColor = style.thinkingColor.color
                 case .action:
-                    attributed[segRange].foregroundColor = style.italicActionColor.color
+                    attr.foregroundColor = style.italicActionColor.color
                 case .narrative:
-                    if runInfo.hasEmphasis {
-                        attributed[segRange].foregroundColor = style.italicActionColor.color
-                    } else {
-                        attributed[segRange].foregroundColor = style.narrativeColor.color
-                    }
+                    attr.foregroundColor = style.narrativeColor.color
                 }
-
-                segStart = segEnd
             }
 
-            let size = fontSizeOverride ?? CGFloat(style.fontSize)
-            let weight: Font.Weight = bold ? .bold : .regular
-            if attributed[runInfo.range].font == nil {
-                attributed[runInfo.range].font = .system(size: size, weight: weight)
-            } else if bold || fontSizeOverride != nil {
-                // Override font size/weight for headings while preserving italic intent
-                attributed[runInfo.range].font = .system(size: size, weight: weight)
+            // Apply font with proper italic/bold
+            let weight: Font.Weight = (segment.isBold || bold) ? .bold : .regular
+            if segment.isCode {
+                attr.font = .system(size: max(baseSize - 1, 10), weight: weight, design: .monospaced)
+            } else if segment.isItalic {
+                attr.font = .system(size: baseSize, weight: weight).italic()
+            } else {
+                attr.font = .system(size: baseSize, weight: weight)
             }
 
-            charOffset += runInfo.length
+            result += attr
         }
 
-        return attributed
+        return result
     }
 }
 

@@ -7,9 +7,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case api = "API Provider"
     case general = "General"
     case chat = "Chat"
-    case presets = "Chat Presets"
+    case presets = "Chat Completion Preset"
     case experimental = "Experimental"
-    case data = "Data"
+    case data = "Import Data"
     case reset = "Reset"
 
     var id: String { rawValue }
@@ -91,6 +91,7 @@ final class SettingsViewModel {
     var isLoadingModels = false
 
     private weak var appState: AppState?
+    private var saveWorkItem: DispatchWorkItem?
 
     init(appState: AppState) {
         self.appState = appState
@@ -160,6 +161,24 @@ final class SettingsViewModel {
         guard selectedAPI == .openrouter else { return [] }
         let providers = Set(currentModels.compactMap { $0.components(separatedBy: "/").first })
         return providers.sorted()
+    }
+
+    /// Grouped and filtered models for OpenRouter display (cached computation)
+    struct ModelGroup: Identifiable {
+        let provider: String
+        let models: [String]
+        var id: String { provider }
+    }
+
+    var groupedFilteredModels: [ModelGroup] {
+        let filtered = filteredModels
+        var groups: [String: [String]] = [:]
+        for model in filtered {
+            let provider = model.components(separatedBy: "/").first ?? "other"
+            groups[provider, default: []].append(model)
+        }
+        return groups.map { ModelGroup(provider: $0.key, models: $0.value) }
+            .sorted { $0.provider < $1.provider }
     }
 
     /// Sections visible based on current settings
@@ -253,6 +272,7 @@ final class SettingsViewModel {
 
     func saveConfiguration() {
         guard let appState else { return }
+        // Sync all values to AppState immediately (in-memory)
         appState.settings.userName = userName
         appState.settings.defaultSystemPrompt = defaultSystemPrompt
         appState.settings.activeModel = model
@@ -285,8 +305,19 @@ final class SettingsViewModel {
         )
         appState.settings.apiConfigurations[selectedAPI.rawValue] = configData
 
-        appState.saveSettings()
-        statusMessage = "Settings saved"
+        // Debounce disk write to avoid excessive I/O from rapid UI changes
+        saveWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak appState] in
+            appState?.saveSettings()
+        }
+        saveWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+    }
+
+    /// Save the current chat style colors and font size as the global default
+    func saveStyleAsGlobalDefault() {
+        saveConfiguration()
+        appState?.showToast("Chat style saved as global default")
     }
 
     // MARK: - Connection Test

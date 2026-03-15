@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ImageIO
 
 /// Thread-safe in-memory image cache for avatar images
 final class ImageCache: @unchecked Sendable {
@@ -47,27 +48,34 @@ final class ImageCache: @unchecked Sendable {
         return nsImage
     }
 
-    /// Load a thumbnail-sized image from data, using cache
+    /// Load a thumbnail-sized image from data, using cache.
+    /// Uses CGImage downsampling to avoid decoding the full image into memory.
     func loadThumbnail(data: Data, key: String, maxSize: CGFloat = 64) -> NSImage? {
         let thumbKey = "\(key)-thumb-\(Int(maxSize))"
         if let cached = image(for: thumbKey) {
             return cached
         }
-        guard let nsImage = NSImage(data: data) else { return nil }
-        let originalSize = nsImage.size
-        if originalSize.width <= maxSize && originalSize.height <= maxSize {
+
+        // Use ImageIO for efficient downsampled decoding — avoids loading full resolution into memory
+        guard let imageSource = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return nil
+        }
+
+        let downsampleOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxSize
+        ]
+
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, downsampleOptions as CFDictionary) else {
+            // Fall back to NSImage if CGImageSource fails
+            guard let nsImage = NSImage(data: data) else { return nil }
             setImage(nsImage, for: thumbKey)
             return nsImage
         }
-        let scale = min(maxSize / originalSize.width, maxSize / originalSize.height)
-        let newSize = NSSize(width: originalSize.width * scale, height: originalSize.height * scale)
-        let thumbnail = NSImage(size: newSize)
-        thumbnail.lockFocus()
-        nsImage.draw(in: NSRect(origin: .zero, size: newSize),
-                     from: NSRect(origin: .zero, size: originalSize),
-                     operation: .copy,
-                     fraction: 1.0)
-        thumbnail.unlockFocus()
+
+        let thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
         setImage(thumbnail, for: thumbKey)
         return thumbnail
     }

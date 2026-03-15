@@ -1,7 +1,9 @@
 import SwiftUI
 import AppKit
+import ImageIO
 
-/// Displays a character or user avatar with caching and fallback
+/// Displays a character or user avatar with caching and fallback.
+/// Shows a styled default profile picture for characters without custom avatars.
 struct AvatarImageView: View {
     static let sizeSmall: CGFloat = 28
     static let sizeMedium: CGFloat = 36
@@ -12,29 +14,54 @@ struct AvatarImageView: View {
     let name: String
     var size: CGFloat = 40
 
+    /// Cache of data hashes known to be placeholder/invalid images
+    private static var invalidImageKeys = Set<String>()
+
     var body: some View {
         ZStack {
-            if let data = imageData,
-               let nsImage = loadCachedImage(data: data) {
+            if let nsImage = loadValidImage() {
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
                 Circle()
-                    .fill(Color(.separatorColor).opacity(0.3))
-                Image(systemName: "person.crop.circle")
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(.systemGray).opacity(0.4), Color(.systemGray).opacity(0.6)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Image(systemName: "person.fill")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundColor(Color(.separatorColor))
-                    .padding(size * 0.05)
+                    .foregroundColor(.white.opacity(0.9))
+                    .padding(size * 0.22)
             }
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
     }
 
-    private func loadCachedImage(data: Data) -> NSImage? {
+    /// Load image, rejecting minimal placeholder PNGs (1x1 pixel images created for characters without avatars)
+    private func loadValidImage() -> NSImage? {
+        guard let data = imageData, !data.isEmpty else { return nil }
+
         let key = "\(name)-\(data.count)"
+
+        // Fast path: already known to be invalid
+        if Self.invalidImageKeys.contains(key) { return nil }
+
+        // Check image dimensions to reject 1x1 placeholder PNGs
+        if let source = CGImageSourceCreateWithData(data as CFData, nil),
+           let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+           let width = props[kCGImagePropertyPixelWidth as String] as? Int,
+           let height = props[kCGImagePropertyPixelHeight as String] as? Int,
+           width <= 1, height <= 1 {
+            Self.invalidImageKeys.insert(key)
+            return nil
+        }
+
         if size <= AvatarImageView.sizeMedium {
             return ImageCache.shared.loadThumbnail(data: data, key: key, maxSize: size * 2)
         }

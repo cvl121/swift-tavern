@@ -7,8 +7,10 @@ import Foundation
 struct OpenRouterImageService: ImageGenerationService {
     func generateImage(
         prompt: String,
+        negativePrompt: String? = nil,
         settings: ImageGenerationSettings,
-        apiKey: String
+        apiKey: String,
+        referenceImage: Data? = nil
     ) async throws -> Data {
         let baseURL = settings.baseURL ?? "https://openrouter.ai/api"
         guard let url = URL(string: "\(baseURL)/v1/chat/completions") else {
@@ -22,10 +24,23 @@ struct OpenRouterImageService: ImageGenerationService {
         request.setValue("SwiftTavern", forHTTPHeaderField: "X-Title")
         request.timeoutInterval = 120
 
+        // Build message content - multimodal if reference image provided
+        let messageContent: Any
+        if let referenceImage {
+            let base64 = referenceImage.base64EncodedString()
+            let dataURI = "data:image/png;base64,\(base64)"
+            messageContent = [
+                ["type": "image_url", "image_url": ["url": dataURI]],
+                ["type": "text", "text": "Using the attached image as a visual reference for the character's appearance, generate a new image based on this prompt: \(prompt)"],
+            ] as [[String: Any]]
+        } else {
+            messageContent = prompt
+        }
+
         let body: [String: Any] = [
             "model": settings.model,
             "messages": [
-                ["role": "user", "content": prompt]
+                ["role": "user", "content": messageContent]
             ],
         ]
 

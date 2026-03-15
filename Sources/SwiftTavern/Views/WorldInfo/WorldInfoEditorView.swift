@@ -25,14 +25,36 @@ struct WorldInfoEditorView: View {
             Divider()
 
             // Entries list
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    let sortedEntries = book.entries.values.sorted { $0.insertionOrder < $1.insertionOrder }
-                    ForEach(sortedEntries) { entry in
-                        entryEditor(entry)
+            if book.entries.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "text.book.closed")
+                        .font(.system(size: 32))
+                        .foregroundColor(.secondary)
+                    Text("No entries yet")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    Text("Add an entry to define world lore that activates based on keywords.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Add Entry") {
+                        viewModel.addEntry(to: &book)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        let sortedEntries = book.entries.values.sorted { $0.insertionOrder < $1.insertionOrder }
+                        ForEach(sortedEntries) { entry in
+                            entryEditor(entry)
+                        }
+                    }
+                    .padding()
+                }
             }
         }
         .alert("Delete Entry", isPresented: $showDeleteEntryConfirmation) {

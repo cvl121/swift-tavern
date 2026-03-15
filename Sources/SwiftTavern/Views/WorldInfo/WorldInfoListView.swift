@@ -1,8 +1,29 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// List of World Lore books
 struct WorldInfoListView: View {
     @Bindable var viewModel: WorldInfoViewModel
+    @State private var isDropTargeted = false
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        var handled = false
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { data, _ in
+                    guard let data = data as? Data,
+                          let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                    if url.pathExtension.lowercased() == "json" {
+                        DispatchQueue.main.async {
+                            viewModel.importWorldLore(from: url)
+                        }
+                    }
+                }
+                handled = true
+            }
+        }
+        return handled
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,8 +46,8 @@ struct WorldInfoListView: View {
                     .controlSize(.small)
                 }
 
-                Button("New Book") {
-                    viewModel.showingNewBookDialog = true
+                Button(action: { viewModel.showingNewBookDialog = true }) {
+                    Label("New Book", systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -106,6 +127,7 @@ struct WorldInfoListView: View {
                                         Text(book.name)
                                             .font(.system(size: 13, weight: .medium))
                                             .lineLimit(1)
+                                            .truncationMode(.tail)
                                         if viewModel.characterWorldLoreName == book.name {
                                             Text("Active")
                                                 .font(.system(size: 9, weight: .bold))
@@ -137,10 +159,18 @@ struct WorldInfoListView: View {
                                     ? Color.accentColor.opacity(0.15)
                                     : Color.clear
                             )
+                            .help(book.name)
                             .onTapGesture {
                                 viewModel.selectedBook = book
                             }
                             .contextMenu {
+                                Button("Edit") {
+                                    viewModel.selectedBook = book
+                                }
+                                Button("Export") {
+                                    viewModel.exportBook(book)
+                                }
+                                Divider()
                                 Button("Delete", role: .destructive) {
                                     viewModel.deleteBook(book)
                                 }
@@ -168,6 +198,27 @@ struct WorldInfoListView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
+            }
+        }
+        .onDrop(of: [.json, .fileURL], isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers: providers)
+        }
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [8, 4]))
+                    .background(Color.accentColor.opacity(0.08))
+                    .overlay {
+                        VStack(spacing: 8) {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 32))
+                                .foregroundColor(.accentColor)
+                            Text("Drop to Import World Lore")
+                                .font(.headline)
+                                .foregroundColor(.accentColor)
+                        }
+                    }
+                    .padding(4)
             }
         }
         .fileImporter(

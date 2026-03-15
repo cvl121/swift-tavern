@@ -25,7 +25,30 @@ protocol ImageGenerationService {
     /// - Returns: PNG image data
     func generateImage(
         prompt: String,
+        negativePrompt: String?,
+        settings: ImageGenerationSettings,
+        apiKey: String,
+        referenceImage: Data?
+    ) async throws -> Data
+}
+
+extension ImageGenerationService {
+    /// Convenience overload without negative prompt or reference image
+    func generateImage(
+        prompt: String,
         settings: ImageGenerationSettings,
         apiKey: String
-    ) async throws -> Data
+    ) async throws -> Data {
+        try await generateImage(prompt: prompt, negativePrompt: nil, settings: settings, apiKey: apiKey, referenceImage: nil)
+    }
+
+    /// Convenience overload without reference image
+    func generateImage(
+        prompt: String,
+        negativePrompt: String?,
+        settings: ImageGenerationSettings,
+        apiKey: String
+    ) async throws -> Data {
+        try await generateImage(prompt: prompt, negativePrompt: negativePrompt, settings: settings, apiKey: apiKey, referenceImage: nil)
+    }
 }

@@ -24,6 +24,8 @@ struct MessageBubbleView: View {
 
     var isFocused: Bool = false
 
+    @State private var isHovered = false
+
     // Swipe support (greeting or response swipes)
     var swipeInfo: SwipeInfo?
 
@@ -136,6 +138,7 @@ struct MessageBubbleView: View {
                         }
                         .buttonStyle(.borderless)
                         .disabled(!info.canSwipeLeft)
+                        .accessibilityLabel("Previous response")
 
                         Text("\(info.currentIndex + 1)/\(info.totalCount)")
                             .font(.system(size: 11, weight: .medium))
@@ -147,6 +150,7 @@ struct MessageBubbleView: View {
                         }
                         .buttonStyle(.borderless)
                         .disabled(!info.canSwipeRight)
+                        .accessibilityLabel("Next response")
                     }
                     .padding(.top, 2)
                 }
@@ -158,7 +162,7 @@ struct MessageBubbleView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 10)
         .background(isFocused ? Color.accentColor.opacity(0.06) : Color.clear)
         .overlay(
             Rectangle()
@@ -169,6 +173,8 @@ struct MessageBubbleView: View {
         .overlay(
             isFocused ? RoundedRectangle(cornerRadius: 4).stroke(Color.accentColor.opacity(0.3), lineWidth: 1).padding(2) : nil
         )
+        .onHover { isHovered = $0 }
+        .opacity(isHovered ? 1.0 : 0.95)
         .contentShape(Rectangle())
         .contextMenu {
             Button("Copy") { onCopy() }

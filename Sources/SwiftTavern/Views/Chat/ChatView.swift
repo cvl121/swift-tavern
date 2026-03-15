@@ -8,13 +8,31 @@ struct ChatView: View {
 
     @State private var showingChatStyleEditor = false
     @State private var autoScrollEnabled = true
+    @State private var bottomAnchorVisible = true
     @State private var lastStreamScrollTime: Date = .distantPast
+    @State private var hoveredHeaderButton: String?
+    @State private var firstVisibleMessageID: String?
+    @State private var cachedUserAvatarData: Data?
+    @State private var cachedUserAvatarKey: String = ""
 
-    /// Load avatar data for the active user persona
+    /// Load avatar data for the active user persona (cached to avoid repeated disk I/O)
     private var userAvatarData: Data? {
         let activePersona = appState.personas.first { $0.name == appState.settings.userName }
-        guard let filename = activePersona?.avatarFilename else { return nil }
-        return appState.personaStorage.loadAvatar(filename: filename)
+        let key = "\(appState.settings.userName)-\(activePersona?.avatarFilename ?? "")"
+        if key == cachedUserAvatarKey { return cachedUserAvatarData }
+        // Cache miss - load from disk
+        let data: Data?
+        if let filename = activePersona?.avatarFilename {
+            data = appState.personaStorage.loadAvatar(filename: filename)
+        } else {
+            data = nil
+        }
+        // Update cache on next runloop to avoid modifying state during view update
+        DispatchQueue.main.async {
+            cachedUserAvatarKey = key
+            cachedUserAvatarData = data
+        }
+        return data
     }
 
     /// Per-conversation style if set, otherwise global style from settings
@@ -44,14 +62,16 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        let allDisplayMessages = chatVM.displayMessages
-                        let displayMessages = chatVM.showingBookmarksOnly
-                            ? allDisplayMessages.enumerated().filter { $0.element.isBookmarked }
-                            : Array(allDisplayMessages.enumerated())
-                        ForEach(displayMessages, id: \.element.id) { offset, message in
+                        ForEach(chatVM.indexedDisplayMessages, id: \.element.id) { offset, message in
                             // Use offset (original index in full messages array) for operations
                             messageBubble(index: offset, message: message)
                                 .id(message.id)
+                                .onAppear {
+                                    // Track the first (topmost) visible message for scroll restoration
+                                    if firstVisibleMessageID == nil {
+                                        firstVisibleMessageID = message.id
+                                    }
+                                }
                         }
 
                         // Streaming indicator
@@ -142,14 +162,30 @@ struct ChatView: View {
                             .padding()
                         }
 
-                        // Invisible anchor at the very bottom — also detects scroll position
+                        // Invisible anchor at the very bottom — detects scroll position
                         Color.clear
                             .frame(height: 1)
                             .id("bottom")
-                            .onAppear { autoScrollEnabled = true }
+                            .onAppear {
+                                bottomAnchorVisible = true
+                                autoScrollEnabled = true
+                                chatVM.clearScrollAnchor()
+                            }
                             .onDisappear {
-                                // User scrolled up away from bottom — stop fighting their scroll
+                                bottomAnchorVisible = false
+                                // During generation, don't immediately disable auto-scroll.
+                                // LazyVStack layout changes cause the bottom anchor to
+                                // momentarily disappear/reappear as streaming content grows.
+                                // Instead, we detect deliberate user scroll-up via a delayed check.
                                 if chatVM.isGenerating {
+                                    // Check after a short delay — if anchor is still gone,
+                                    // the user deliberately scrolled away
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        if !bottomAnchorVisible && chatVM.isGenerating {
+                                            autoScrollEnabled = false
+                                        }
+                                    }
+                                } else {
                                     autoScrollEnabled = false
                                 }
                             }
@@ -157,7 +193,18 @@ struct ChatView: View {
                     .padding(.vertical, 8)
                 }
                 .onAppear {
-                    scrollToBottom(proxy: proxy, animated: false)
+                    // Restore saved scroll position, or default to bottom
+                    if let anchor = chatVM.savedScrollAnchor() {
+                        proxy.scrollTo(anchor, anchor: .top)
+                    } else {
+                        scrollToBottom(proxy: proxy, animated: false)
+                    }
+                    firstVisibleMessageID = nil
+                }
+                .onDisappear {
+                    // Save scroll position when navigating away
+                    chatVM.saveScrollPosition(visibleMessageID: firstVisibleMessageID)
+                    firstVisibleMessageID = nil
                 }
                 .onChange(of: chatVM.messages.count) {
                     if autoScrollEnabled {
@@ -229,7 +276,7 @@ struct ChatView: View {
                 onHeightChanged: { appState.saveSettings() },
                 onSend: { chatVM.sendMessage() },
                 onStop: { chatVM.stopGenerating() },
-                onGenerateImage: { chatVM.generateImageForCurrentScene() }
+                onGenerateImage: { chatVM.openImagePromptEditor() }
             )
         }
         // Auto-save indicator
@@ -346,6 +393,9 @@ struct ChatView: View {
                 }
             }
             .frame(minWidth: 600, minHeight: 400)
+        }
+        .sheet(isPresented: $chatVM.showingImagePromptEditor) {
+            ImagePromptEditorView(chatVM: chatVM, appState: appState)
         }
         // Chat import
         .fileImporter(
@@ -506,6 +556,15 @@ struct ChatView: View {
                     .font(.system(size: 11))
             }
         }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(hoveredHeaderButton == title ? Color.primary.opacity(0.08) : Color.clear)
+        )
+        .onHover { hovering in
+            hoveredHeaderButton = hovering ? title : nil
+        }
     }
 
     private var chatHeader: some View {
@@ -514,6 +573,7 @@ struct ChatView: View {
                 AvatarImageView(imageData: character.avatarData, name: character.card.data.name, size: AvatarImageView.sizeSmall)
                 Text(character.card.data.name)
                     .font(.headline)
+                    .lineLimit(1)
                     .underline(false)
                     .onTapGesture {
                         appState.selectedSidebarItem = .characterInfo(character.filename)
@@ -541,6 +601,7 @@ struct ChatView: View {
                     chatHeaderLabel("Bookmarks", icon: chatVM.showingBookmarksOnly ? "star.fill" : "star")
                         .foregroundColor(chatVM.showingBookmarksOnly ? .yellow : .secondary)
                 }
+                .accessibilityLabel("Filter bookmarked messages")
                 .help("Filter Bookmarked Messages")
 
                 Button(action: {
@@ -549,12 +610,14 @@ struct ChatView: View {
                     chatHeaderLabel("Auto-Scroll", icon: autoScrollEnabled ? "arrow.down.circle.fill" : "arrow.down.circle")
                         .foregroundColor(autoScrollEnabled ? .accentColor : .secondary)
                 }
+                .accessibilityLabel(autoScrollEnabled ? "Auto-scroll enabled" : "Auto-scroll disabled")
                 .help(autoScrollEnabled ? "Disable Auto-Scroll" : "Enable Auto-Scroll")
 
                 Button(action: { showingChatStyleEditor = true }) {
                     chatHeaderLabel("Style", icon: "paintbrush")
                         .foregroundColor(.secondary)
                 }
+                .accessibilityLabel("Chat style settings")
                 .help("Chat Style")
 
                 Button(action: {
@@ -573,6 +636,7 @@ struct ChatView: View {
                         .foregroundColor((chatVM.showingSearch || chatVM.showingInChatSearch) ? .accentColor : .secondary)
                 }
                 .disabled(chatVM.isGenerating)
+                .accessibilityLabel("Search messages")
                 .help("Search Messages (Cmd+F)")
                 .keyboardShortcut("f", modifiers: .command)
 
@@ -580,6 +644,7 @@ struct ChatView: View {
                     chatHeaderLabel("New Chat", icon: "plus.message")
                         .foregroundColor(.secondary)
                 }
+                .accessibilityLabel("New conversation")
                 .help("New Chat (Cmd+N)")
 
                 Button(action: { chatVM.showingChatPicker = true }) {
@@ -589,11 +654,12 @@ struct ChatView: View {
                 .help("Chat History")
 
                 if appState.settings.imageGenerationSettings.enabled {
-                    Button(action: { chatVM.generateImageForCurrentScene() }) {
+                    Button(action: { chatVM.openImagePromptEditor() }) {
                         chatHeaderLabel("Image", icon: chatVM.isGeneratingImage ? "hourglass" : "photo")
                             .foregroundColor(.secondary)
                     }
                     .disabled(chatVM.isGeneratingImage || chatVM.isGenerating)
+                    .accessibilityLabel("Generate image")
                     .help("Generate Scene Image")
                 }
 

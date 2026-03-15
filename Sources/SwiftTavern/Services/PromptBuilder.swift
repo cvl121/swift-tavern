@@ -2,6 +2,62 @@ import Foundation
 
 /// Assembles character card data, world info, and chat history into an LLM messages array
 enum PromptBuilder {
+
+    // MARK: - Keyword Scan Cache
+
+    /// Cached result of a keyword scan against recent chat text
+    private struct KeywordScanResult {
+        let matchedEntryIndices: Set<Int>
+        let contentHash: Int
+    }
+
+    /// Cache for character book keyword scan results, keyed by a hash of the scan text
+    private static var charBookScanCache: KeywordScanResult?
+    /// Cache for world info keyword scan results, keyed by a hash of the scan text
+    private static var worldInfoScanCache: KeywordScanResult?
+
+    /// Compute a simple hash for an array of entry keys + the search text to detect changes
+    private static func keywordScanHash(text: String, entryKeys: [[String]]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(text)
+        for keys in entryKeys {
+            for key in keys {
+                hasher.combine(key)
+            }
+        }
+        return hasher.finalize()
+    }
+
+    /// Scan entries for keyword matches against recent text, using cache when possible.
+    /// Returns the set of entry indices (into the provided array) that matched.
+    private static func scanKeywordMatches(
+        entries: [(index: Int, keys: [String], caseSensitive: Bool)],
+        recentText: String,
+        cache: inout KeywordScanResult?
+    ) -> Set<Int> {
+        let entryKeys = entries.map(\.keys)
+        let hash = keywordScanHash(text: recentText, entryKeys: entryKeys)
+
+        if let cached = cache, cached.contentHash == hash {
+            return cached.matchedEntryIndices
+        }
+
+        var matched = Set<Int>()
+        for entry in entries {
+            let searchText = entry.caseSensitive ? recentText : recentText.lowercased()
+            for key in entry.keys {
+                let searchKey = entry.caseSensitive ? key : key.lowercased()
+                if searchText.contains(searchKey) {
+                    matched.insert(entry.index)
+                    break
+                }
+            }
+        }
+
+        cache = KeywordScanResult(matchedEntryIndices: matched, contentHash: hash)
+        return matched
+    }
+
     /// Build the full message array for an LLM API call
     static func buildMessages(
         character: CharacterData,
@@ -46,21 +102,28 @@ enum PromptBuilder {
             systemContent += "\n\n\(userName)'s description: \(persona.description)"
         }
 
-        // 6. Character Book entries (embedded world info)
+        // 6. Character Book entries (embedded world info) — with cached keyword scanning
         if let charBook = character.characterBook {
-            let bookEntries = charBook.entries
+            let bookEntries = charBook.entries.sorted(by: { $0.insertionOrder < $1.insertionOrder })
             let recentTextForBook = chatHistory.suffix(charBook.scanDepth ?? 10).map(\.mes).joined(separator: " ")
 
-            for entry in bookEntries.sorted(by: { $0.insertionOrder < $1.insertionOrder }) {
+            // Collect non-constant, enabled entries for keyword scanning
+            var keywordEntries: [(index: Int, keys: [String], caseSensitive: Bool)] = []
+            for (i, entry) in bookEntries.enumerated() {
+                guard entry.enabled && !entry.constant else { continue }
+                keywordEntries.append((index: i, keys: entry.keys, caseSensitive: entry.caseSensitive ?? false))
+            }
+
+            let matchedIndices = scanKeywordMatches(
+                entries: keywordEntries,
+                recentText: recentTextForBook,
+                cache: &charBookScanCache
+            )
+
+            for (i, entry) in bookEntries.enumerated() {
                 guard entry.enabled else { continue }
                 let entryContent = entry.content.replacingTemplateVars(charName: character.name, userName: userName)
-                if entry.constant {
-                    systemContent += "\n\n\(entryContent)"
-                } else if entry.keys.contains(where: { key in
-                    let searchText = (entry.caseSensitive ?? false) ? recentTextForBook : recentTextForBook.lowercased()
-                    let searchKey = (entry.caseSensitive ?? false) ? key : key.lowercased()
-                    return searchText.contains(searchKey)
-                }) {
+                if entry.constant || matchedIndices.contains(i) {
                     systemContent += "\n\n\(entryContent)"
                 }
             }
@@ -73,15 +136,18 @@ enum PromptBuilder {
             systemContent += "\n\n\(entryContent)"
         }
 
-        // 8. World Info - keyword-triggered entries
+        // 8. World Info - keyword-triggered entries — with cached keyword scanning
         let recentText = chatHistory.suffix(10).map(\.mes).joined(separator: " ")
-        let triggeredEntries = worldInfoEntries.filter { entry in
-            !entry.constant && entry.enabled && entry.keys.contains { key in
-                let searchText = entry.caseSensitive ? recentText : recentText.lowercased()
-                let searchKey = entry.caseSensitive ? key : key.lowercased()
-                return searchText.contains(searchKey)
-            }
-        }
+        let nonConstantEntries = worldInfoEntries.enumerated().filter { !$0.element.constant && $0.element.enabled }
+        let keywordEntries = nonConstantEntries.map { (index: $0.offset, keys: $0.element.keys, caseSensitive: $0.element.caseSensitive) }
+
+        let matchedWorldIndices = scanKeywordMatches(
+            entries: keywordEntries,
+            recentText: recentText,
+            cache: &worldInfoScanCache
+        )
+
+        let triggeredEntries = nonConstantEntries.filter { matchedWorldIndices.contains($0.offset) }.map(\.element)
         for entry in triggeredEntries.sorted(by: { $0.insertionOrder < $1.insertionOrder }) {
             let entryContent = entry.content.replacingTemplateVars(charName: character.name, userName: userName)
             systemContent += "\n\n\(entryContent)"

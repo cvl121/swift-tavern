@@ -40,6 +40,11 @@ struct SwiftTavernApp: App {
                 }
                 .keyboardShortcut("r", modifiers: .command)
 
+                Button("Global Search") {
+                    NotificationCenter.default.post(name: .globalSearch, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+
                 Divider()
 
                 Button("Settings") {
@@ -57,4 +62,6 @@ extension Notification.Name {
     static let searchMessages = Notification.Name("com.swifttavern.searchMessages")
     static let chatHistory = Notification.Name("com.swifttavern.chatHistory")
     static let regenerateResponse = Notification.Name("com.swifttavern.regenerateResponse")
+    static let globalSearch = Notification.Name("com.swifttavern.globalSearch")
+    static let showOnboarding = Notification.Name("com.swifttavern.showOnboarding")
 }
