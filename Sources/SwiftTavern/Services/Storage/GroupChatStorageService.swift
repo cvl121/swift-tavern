@@ -20,7 +20,7 @@ final class GroupChatStorageService {
             userName: userName,
             characterName: groupName,
             chatMetadata: ChatMetadataInfo(),
-            createDate: Date().sillyTavernDateString
+            createDate: Date().chatDateString
         )
 
         let line = try encodeLine(metadata) + "\n"

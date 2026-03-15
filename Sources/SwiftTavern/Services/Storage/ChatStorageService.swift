@@ -38,7 +38,7 @@ final class ChatStorageService: @unchecked Sendable {
             userName: userName,
             characterName: characterName,
             chatMetadata: ChatMetadataInfo(),
-            createDate: Date().sillyTavernDateString
+            createDate: Date().chatDateString
         )
 
         var messages: [ChatMessage] = []

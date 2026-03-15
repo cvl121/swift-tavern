@@ -1,7 +1,7 @@
 import Foundation
 
 /// Parameters controlling LLM text generation
-/// Matches SillyTavern's Chat Completion preset options
+/// LLM chat completion generation parameters
 struct GenerationParameters: Codable, Equatable {
     var maxTokens: Int
     var contextSize: Int
@@ -14,7 +14,7 @@ struct GenerationParameters: Codable, Equatable {
     var stopSequences: [String]
     var streamResponse: Bool
 
-    // SillyTavern Chat Completion preset fields
+    // Advanced sampling parameters
     var minP: Double
     var topA: Double
     var typicalP: Double
@@ -63,7 +63,7 @@ struct GenerationParameters: Codable, Equatable {
         case seedValue = "seed"
     }
 
-    /// Default preset matching SillyTavern's "Default" Chat Completion preset
+    /// Default generation parameter preset
     static let `default` = GenerationParameters(
         maxTokens: 2048,
         contextSize: 4096,

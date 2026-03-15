@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Generation parameter controls matching SillyTavern's Chat Completion preset options
+/// Generation parameter controls for LLM chat completion requests
 struct GenerationSettingsView: View {
     @Binding var params: GenerationParameters
 

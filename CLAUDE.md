@@ -74,7 +74,7 @@ JSONL format (first line = metadata, subsequent lines = messages). Files stored 
 
 ### Chat Presets System
 
-Named generation parameter presets compatible with SillyTavern:
+Named generation parameter presets:
 - `ChatPreset` model: name + `GenerationParameters`
 - `PresetStorageService`: CRUD for preset JSON files in `presets/` directory
 - Import/export SillyTavern preset format
@@ -138,7 +138,7 @@ Template variables `{{char}}` and `{{user}}` are replaced via `String.replacingT
 | `Models/WorldInfo.swift` | `WorldInfo`, `WorldInfoEntry` | Standalone world info books. Custom Codable handles SillyTavern field alternates (key/keys, order/insertion_order, disable/enabled). |
 | `Models/Persona.swift` | `Persona` | User identity: name, description, optional avatarFilename. |
 | `Models/Group.swift` | `CharacterGroup`, `GroupActivationStrategy` | Group chat config: members (character filenames), activation strategy (natural/roundRobin/random/manual). |
-| `Models/GenerationParameters.swift` | `GenerationParameters` | LLM params: maxTokens (2048), temperature (0.7), topP, topK, frequencyPenalty, presencePenalty, repetitionPenalty, stopSequences, streamResponse. Advanced SillyTavern-compatible params: minP, topA, typicalP, TFS, mirostatMode/Tau/Eta, noRepeatNgramSize, minLength, smoothingFactor/Curve, dynaTempEnabled/Low/High/Exponent, seedValue, contextSize, encoderRepetitionPenalty. |
+| `Models/GenerationParameters.swift` | `GenerationParameters` | LLM params: maxTokens (2048), temperature (0.7), topP, topK, frequencyPenalty, presencePenalty, repetitionPenalty, stopSequences, streamResponse. Advanced sampling params: minP, topA, typicalP, TFS, mirostatMode/Tau/Eta, noRepeatNgramSize, minLength, smoothingFactor/Curve, dynaTempEnabled/Low/High/Exponent, seedValue, contextSize, encoderRepetitionPenalty. |
 | `Models/ChatStyle.swift` | `ChatStyle`, `CodableColor` | Message display styling. Three text colors: quoted (dialogue), italic/action, narrative. Defaults for dark mode (`.default`) and light mode (`.lightDefault`). `adaptedForAppearance()` auto-switches if colors too bright for light mode. |
 | `Models/ChatPreset.swift` | `ChatPreset` | Named generation parameter presets. Fields: name, generationParameters. Identifiable via name. Compatible with SillyTavern preset format. |
 | `Models/ImageGenerationSettings.swift` | `ImageGenerationSettings` | Image gen config: `ImageGenProvider` enum (dalle/stability/openrouter/novelai/custom), `ImageTriggerMode` (manual/everyNMessages/injectedPrompt), `ImageSize`, `ImageQuality`, `ImageDisplaySize`. API key management with shared key support via `sharedTextProvider`. Scene prompt template, injection prompt. |
@@ -204,7 +204,7 @@ Template variables `{{char}}` and `{{user}}` are replaced via `String.replacingT
 |------|----------|---------|
 | `Utilities/Extensions/String+Extensions.swift` | String extensions | `sanitizedFilename()`, `replacingTemplateVars(char:, user:)`, `truncated(to:)` |
 | `Utilities/Extensions/Data+PNG.swift` | Data extensions | `readUInt32()` (big-endian), `uint32BigEndian()`, `pngSignature`, `isPNG` |
-| `Utilities/Extensions/Date+Formatting.swift` | Date/String extensions | `sillyTavernDateString`, `chatFileDateString` (filename-safe), `relativeDisplayString` ("2d ago"), String `sillyTavernDate` parser |
+| `Utilities/Extensions/Date+Formatting.swift` | Date/String extensions | `chatDateString`, `chatFileDateString` (filename-safe), `relativeDisplayString` ("2d ago"), String `chatDate` parser |
 | `Utilities/FileManagerExtensions.swift` | FileManager extension | `appSupportDirectory` → ~/Library/Application Support/SwiftTavern/ (fallback ~/.swifttavern/) |
 | `Utilities/ImageCache.swift` | `ImageCache` | Thread-safe NSCache wrapper. 200 image limit, 100MB budget. Concurrent DispatchQueue. |
 

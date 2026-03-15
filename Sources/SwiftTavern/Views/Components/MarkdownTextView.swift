@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Renders chat message text with full markdown support and optional SillyTavern-style coloring.
+/// Renders chat message text with full markdown support and optional roleplay-style coloring.
 /// Handles block elements (headers, HRs, blockquotes, lists) and inline elements (bold, italic, code).
 struct MarkdownTextView: View {
     let text: String
@@ -129,7 +129,7 @@ struct MarkdownTextView: View {
                 continue
             }
 
-            // Horizontal rule: ---, ***, ___, or -- (SillyTavern style)
+            // Horizontal rule: ---, ***, ___, or --
             if trimmed == "---" || trimmed == "***" || trimmed == "___" || trimmed == "--" {
                 flushParagraph()
                 blocks.append(.horizontalRule)
@@ -310,7 +310,7 @@ struct MarkdownTextView: View {
         return AttributedString(text)
     }
 
-    // MARK: - SillyTavern-Style Text Parsing
+    // MARK: - Roleplay-Style Text Parsing
 
     /// Text category for coloring purposes
     private enum TextCategory {
@@ -331,14 +331,14 @@ struct MarkdownTextView: View {
 
     /// Parse raw text into styled segments by scanning markers directly.
     ///
-    /// This matches SillyTavern behavior:
+    /// Text formatting rules:
     /// - `*...*` → italic + action color (asterisks hidden)
     /// - `**...**` → bold (asterisks hidden), keeps contextual color
     /// - `***...***` → bold + italic + action color (asterisks hidden)
     /// - `"..."` → dialogue color (quotes visible)
     /// - `(...)` → thinking/OOC color (parens visible)
     /// - `` `...` `` → monospace code (backticks hidden)
-    /// - Unclosed `*` → rest of text is action (SillyTavern greedy match)
+    /// - Unclosed `*` → rest of text is action (greedy match)
     /// - Color priority: dialogue > thinking > action > narrative
     private func parseSegments(_ rawText: String) -> [TextSegment] {
         let chars = Array(rawText)
@@ -499,7 +499,7 @@ struct MarkdownTextView: View {
     }
 
     /// Build a styled AttributedString from raw text by parsing markers directly.
-    /// This processes the raw text first (like SillyTavern) instead of relying on
+    /// This processes the raw text first instead of relying on
     /// markdown parsing, ensuring consistent color application.
     private func styledInline(_ text: String, style: ChatStyle, fontSizeOverride: CGFloat? = nil, bold: Bool = false) -> AttributedString {
         let segments = parseSegments(text)

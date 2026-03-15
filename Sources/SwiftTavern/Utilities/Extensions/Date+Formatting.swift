@@ -1,8 +1,8 @@
 import Foundation
 
 extension Date {
-    /// SillyTavern-compatible date string
-    var sillyTavernDateString: String {
+    /// Date string for chat metadata
+    var chatDateString: String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: self)
@@ -31,8 +31,8 @@ extension Date {
 }
 
 extension String {
-    /// Parse a SillyTavern date string to Date
-    var sillyTavernDate: Date? {
+    /// Parse a chat metadata date string to Date
+    var chatDate: Date? {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.date(from: self)

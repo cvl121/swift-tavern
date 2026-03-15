@@ -1,10 +1,10 @@
 import Foundation
 
-/// Manages the data directory structure, matching SillyTavern's layout
+/// Manages the application data directory structure
 final class DataDirectoryManager {
     let rootDirectory: URL
 
-    /// Standard subdirectory names matching SillyTavern
+    /// Standard subdirectory names
     static let subdirectories = [
         "characters",
         "chats",

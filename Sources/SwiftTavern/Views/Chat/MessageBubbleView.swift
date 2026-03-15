@@ -59,7 +59,7 @@ struct MessageBubbleView: View {
                             .foregroundColor(.yellow)
                     }
 
-                    if let date = message.sendDate.sillyTavernDate {
+                    if let date = message.sendDate.chatDate {
                         Text(date.relativeDisplayString)
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
