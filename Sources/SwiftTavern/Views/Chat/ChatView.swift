@@ -172,26 +172,10 @@ struct ChatView: View {
                             .id("bottom")
                             .onAppear {
                                 bottomAnchorVisible = true
-                                chatVM.autoScrollEnabled = true
                                 chatVM.clearScrollAnchor()
                             }
                             .onDisappear {
                                 bottomAnchorVisible = false
-                                // During generation, don't immediately disable auto-scroll.
-                                // LazyVStack layout changes cause the bottom anchor to
-                                // momentarily disappear/reappear as streaming content grows.
-                                // Instead, we detect deliberate user scroll-up via a delayed check.
-                                if chatVM.isGenerating {
-                                    // Check after a short delay — if anchor is still gone,
-                                    // the user deliberately scrolled away
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        if !bottomAnchorVisible && chatVM.isGenerating {
-                                            chatVM.autoScrollEnabled = false
-                                        }
-                                    }
-                                } else {
-                                    chatVM.autoScrollEnabled = false
-                                }
                             }
                     }
                     .padding(.vertical, 8)
