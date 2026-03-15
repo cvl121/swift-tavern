@@ -180,11 +180,7 @@ struct ChatView: View {
                     }
                     .padding(.vertical, 8)
                 }
-                .background(Color(.windowBackgroundColor))
-                .onTapGesture {
-                    // Clear text selection and unfocus input when tapping empty areas
-                    NSApp.keyWindow?.makeFirstResponder(nil)
-                }
+                .background(FocusDismissBackground())
                 .onAppear {
                     // Restore saved scroll position, or default to bottom
                     if let anchor = chatVM.savedScrollAnchor() {
@@ -834,6 +830,23 @@ struct ChatView: View {
                         .padding(.bottom, 4)
                 }
             }
+        }
+    }
+}
+
+/// NSView-based background that dismisses first responder on mouse down
+/// without interfering with SwiftUI gesture handling in child views.
+private struct FocusDismissBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> FocusDismissNSView {
+        FocusDismissNSView()
+    }
+    func updateNSView(_ nsView: FocusDismissNSView, context: Context) {}
+
+    final class FocusDismissNSView: NSView {
+        override func mouseDown(with event: NSEvent) {
+            // Resign first responder to clear text selection and input focus
+            window?.makeFirstResponder(nil)
+            super.mouseDown(with: event)
         }
     }
 }
