@@ -7,7 +7,6 @@ struct ChatView: View {
     @Bindable var chatVM: ChatViewModel
 
     @State private var showingChatStyleEditor = false
-    @State private var bottomAnchorVisible = true
     @State private var lastStreamScrollTime: Date = .distantPast
     @State private var hoveredHeaderButton: String?
     /// Set of currently visible message IDs, used to track scroll position
@@ -166,17 +165,10 @@ struct ChatView: View {
                             .padding()
                         }
 
-                        // Invisible anchor at the very bottom — detects scroll position
+                        // Invisible anchor at the very bottom for scroll targeting
                         Color.clear
                             .frame(height: 1)
                             .id("bottom")
-                            .onAppear {
-                                bottomAnchorVisible = true
-                                chatVM.clearScrollAnchor()
-                            }
-                            .onDisappear {
-                                bottomAnchorVisible = false
-                            }
                     }
                     .padding(.vertical, 8)
                 }
@@ -216,7 +208,9 @@ struct ChatView: View {
                 }
                 .onChange(of: chatVM.messages.last?.swipeId) {
                     // Re-anchor scroll when user swipes between response versions
-                    scrollToBottom(proxy: proxy, animated: false)
+                    if let lastMsg = chatVM.messages.last {
+                        proxy.scrollTo(lastMsg.id, anchor: .bottom)
+                    }
                 }
                 .onChange(of: chatVM.editingMessageIndex) { _, newIndex in
                     // Scroll to the message being edited so it's visible
@@ -231,7 +225,9 @@ struct ChatView: View {
                 }
                 .onChange(of: chatVM.greetingSwipeIndex) {
                     // Re-anchor scroll when user swipes between greeting versions
-                    scrollToBottom(proxy: proxy, animated: false)
+                    if let firstMsg = chatVM.messages.first {
+                        proxy.scrollTo(firstMsg.id, anchor: .top)
+                    }
                 }
             }
 
@@ -414,6 +410,12 @@ struct ChatView: View {
         ) { _ in
             chatVM.showingChatExporter = false
         }
+        // Clear unread badge when app regains focus while this conversation is open
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if let filename = appState.selectedCharacter?.filename {
+                appState.markRead(characterFilename: filename)
+            }
+        }
         // Delete confirmation
         .alert("Delete Message", isPresented: $chatVM.showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -440,12 +442,16 @@ struct ChatView: View {
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool) {
+        chatVM.clearScrollAnchor()
+        // During streaming, scroll to the streaming indicator to keep it visible
+        // and avoid LazyVStack deallocating messages above
+        let target = chatVM.isGenerating ? "streaming" : "bottom"
         if animated {
             withAnimation(.easeOut(duration: 0.2)) {
-                proxy.scrollTo("bottom", anchor: .bottom)
+                proxy.scrollTo(target, anchor: .bottom)
             }
         } else {
-            proxy.scrollTo("bottom", anchor: .bottom)
+            proxy.scrollTo(target, anchor: .bottom)
         }
     }
 

@@ -120,14 +120,27 @@ final class ChatViewModel {
         return allMessages
     }
 
-    /// Display messages with their original indices, filtered by bookmark state.
+    /// Display messages with their indices into the full messages array, filtered by bookmark state.
     /// Pre-computed to avoid recalculating in the view body on every render.
     var indexedDisplayMessages: [(offset: Int, element: ChatMessage)] {
-        let all = displayMessages
-        if showingBookmarksOnly {
-            return all.enumerated().filter { $0.element.isBookmarked }
+        let allMessages = appState?.currentChat?.messages ?? []
+        let limit = appState?.settings.chatDisplayLimit ?? 0
+        let startIndex: Int
+        if limit > 0 && allMessages.count > limit {
+            startIndex = allMessages.count - limit
+        } else {
+            startIndex = 0
         }
-        return Array(all.enumerated())
+
+        let displayed = Array(allMessages[startIndex...])
+        let indexed = displayed.enumerated().map {
+            (offset: $0.offset + startIndex, element: $0.element)
+        }
+
+        if showingBookmarksOnly {
+            return indexed.filter { $0.element.isBookmarked }
+        }
+        return indexed
     }
 
     /// Truncate a message for display if a length limit is set
@@ -767,11 +780,13 @@ final class ChatViewModel {
         pendingDeleteIndex = nil
     }
 
-    /// Delete a message and all messages after it (rewind conversation)
+    /// Delete all messages after the selected message (rewind conversation, keeping the selected message)
     func deleteMessageAndAfter(at index: Int) {
         guard let appState, index < (appState.currentChat?.messages.count ?? 0), index > 0 else { return }
+        let removeStart = index + 1
+        guard removeStart < (appState.currentChat?.messages.count ?? 0) else { return }
         pushUndo("delete messages")
-        appState.currentChat?.messages.removeSubrange(index...)
+        appState.currentChat?.messages.removeSubrange(removeStart...)
         rewriteCurrentChat()
     }
 

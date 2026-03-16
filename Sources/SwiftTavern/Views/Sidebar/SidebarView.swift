@@ -7,7 +7,6 @@ struct SidebarView: View {
     @Bindable var characterListVM: CharacterListViewModel
     @Bindable var groupChatVM: GroupChatViewModel
 
-    @State private var conversationSearchText = ""
     @State private var showGroupDeleteConfirmation = false
     @State private var pendingDeleteGroup: CharacterGroup?
     @State private var showConversationDeleteConfirmation = false
@@ -21,15 +20,11 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Search bar
-            SearchBarView(text: $conversationSearchText, placeholder: "Search conversations...", debounceInterval: 0.25)
-                .padding(.top, 30)
-                .padding(.bottom, 6)
-
             // Scrollable conversation list
             ScrollView {
                 LazyVStack(spacing: 2) {
                     conversationsSection
+                        .padding(.top, 24)
                     if appState.settings.groupChatsEnabled {
                         groupsSection
                     }
@@ -123,29 +118,21 @@ struct SidebarView: View {
         sectionHeader("Conversations")
 
         if filteredConversations.isEmpty {
-            if conversationSearchText.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "person.crop.circle.badge.plus")
-                        .font(.system(size: 24))
-                        .foregroundColor(.secondary)
-                    Text("No characters yet")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                    Button("Import Character") {
-                        characterListVM.showingImporter = true
-                    }
-                    .controlSize(.small)
-                    .buttonStyle(.bordered)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-            } else {
-                Text("No matches for \"\(conversationSearchText)\"")
-                    .font(.system(size: 11))
+            VStack(spacing: 8) {
+                Image(systemName: "person.crop.circle.badge.plus")
+                    .font(.system(size: 24))
                     .foregroundColor(.secondary)
-                    .padding(.vertical, 4)
-                    .padding(.leading, 4)
+                Text("No characters yet")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                Button("Import Character") {
+                    characterListVM.showingImporter = true
+                }
+                .controlSize(.small)
+                .buttonStyle(.bordered)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
         }
 
         groupedConversationsList
@@ -339,16 +326,8 @@ struct SidebarView: View {
     }
 
     private var filteredConversations: [CharacterEntry] {
-        let base: [CharacterEntry]
-        if conversationSearchText.isEmpty {
-            base = characterListVM.filteredCharacters
-        } else {
-            base = characterListVM.filteredCharacters.filter {
-                $0.card.data.name.localizedCaseInsensitiveContains(conversationSearchText)
-            }
-        }
         let pinned = Set(appState.settings.pinnedCharacters)
-        return base.sorted { a, b in
+        return characterListVM.filteredCharacters.sorted { a, b in
             let aPinned = pinned.contains(a.filename)
             let bPinned = pinned.contains(b.filename)
             if aPinned != bPinned { return aPinned }
