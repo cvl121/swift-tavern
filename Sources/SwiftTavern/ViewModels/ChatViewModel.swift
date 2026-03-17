@@ -240,6 +240,9 @@ final class ChatViewModel {
         let imageInjection: String? = (imgSettings.enabled && imgSettings.triggerMode == .injectedPrompt)
             ? imgSettings.injectionPrompt : nil
 
+        // Only inject reminder prompt when conversation is long enough to benefit
+        let reminderPrompt: String? = chatHistory.count >= 6 ? appState.settings.reminderPrompt : nil
+
         let llmMessages = PromptBuilder.buildMessages(
             character: character.card.data,
             chatHistory: chatHistory,
@@ -247,7 +250,8 @@ final class ChatViewModel {
             systemPrompt: appState.settings.defaultSystemPrompt,
             worldInfoEntries: worldInfoEntries,
             persona: persona,
-            imageInjectionPrompt: imageInjection
+            imageInjectionPrompt: imageInjection,
+            reminderPrompt: reminderPrompt
         )
 
         let shouldStream = config.generationParams.streamResponse
@@ -775,6 +779,10 @@ final class ChatViewModel {
 
         pushUndo("delete message")
         appState.currentChat?.messages.remove(at: index)
+        // Clear any editing state that might reference stale indices
+        if let editIdx = editingMessageIndex, editIdx >= index {
+            cancelEdit()
+        }
         rewriteCurrentChat()
         showDeleteConfirmation = false
         pendingDeleteIndex = nil
@@ -1048,13 +1056,15 @@ final class ChatViewModel {
         let persona = appState.effectivePersona(for: character)
         let effectiveName = appState.effectiveUserName(for: character)
 
+        let reminderPrompt: String? = chatHistory.count >= 6 ? appState.settings.reminderPrompt : nil
         let llmMessages = PromptBuilder.buildMessages(
             character: character.card.data,
             chatHistory: chatHistory,
             userName: effectiveName,
             systemPrompt: appState.settings.defaultSystemPrompt,
             worldInfoEntries: worldInfoEntries,
-            persona: persona
+            persona: persona,
+            reminderPrompt: reminderPrompt
         )
 
         promptPreviewText = llmMessages.map { msg in

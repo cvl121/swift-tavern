@@ -24,7 +24,7 @@ struct SidebarView: View {
             ScrollView {
                 LazyVStack(spacing: 2) {
                     conversationsSection
-                        .padding(.top, 24)
+                        .padding(.top, 12)
                     if appState.settings.groupChatsEnabled {
                         groupsSection
                     }
@@ -143,7 +143,7 @@ struct SidebarView: View {
         ForEach(filteredConversations) { entry in
             characterConversationRow(entry: entry)
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 6)
     }
 
     private func characterConversationRow(entry: CharacterEntry) -> some View {
@@ -262,13 +262,12 @@ struct SidebarView: View {
 
     private func sectionHeader(_ title: String, topPadding: CGFloat = 6) -> some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundColor(.secondary)
-            .textCase(.uppercase)
+            .font(.system(size: 12, weight: .bold))
+            .foregroundColor(.primary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 4)
+            .padding(.leading, 8)
             .padding(.top, topPadding)
-            .padding(.bottom, 2)
+            .padding(.bottom, 6)
     }
 
     // MARK: - Navigation Section
@@ -472,8 +471,8 @@ private struct ConversationRowView: View {
 
             Spacer()
         }
-        .padding(.vertical, 4)
-        .padding(.leading, 4)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 6)

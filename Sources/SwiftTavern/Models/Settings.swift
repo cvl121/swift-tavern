@@ -58,6 +58,9 @@ struct AppSettings: Codable {
     var characterPersonas: [String: String]
     /// Set of character filenames pinned to top of conversation list
     var pinnedCharacters: [String]
+    /// Optional reminder prompt injected near the end of the conversation to reinforce instructions
+    /// (e.g., tense, style, formatting reminders that models tend to forget in long conversations)
+    var reminderPrompt: String
 
     enum CodingKeys: String, CodingKey {
         case activeAPI = "active_api"
@@ -95,6 +98,7 @@ struct AppSettings: Codable {
         case imageGenerationSettings = "image_generation_settings"
         case characterPersonas = "character_personas"
         case pinnedCharacters = "pinned_characters"
+        case reminderPrompt = "reminder_prompt"
     }
 
     init(from decoder: Decoder) throws {
@@ -134,6 +138,7 @@ struct AppSettings: Codable {
         imageGenerationSettings = try container.decodeIfPresent(ImageGenerationSettings.self, forKey: .imageGenerationSettings) ?? .default
         characterPersonas = try container.decodeIfPresent([String: String].self, forKey: .characterPersonas) ?? [:]
         pinnedCharacters = try container.decodeIfPresent([String].self, forKey: .pinnedCharacters) ?? []
+        reminderPrompt = try container.decodeIfPresent(String.self, forKey: .reminderPrompt) ?? ""
     }
 
     init(
@@ -160,7 +165,8 @@ struct AppSettings: Codable {
         keyboardMessageNavEnabled: Bool = false,
         imageGenerationSettings: ImageGenerationSettings = .default,
         characterPersonas: [String: String] = [:],
-        pinnedCharacters: [String] = []
+        pinnedCharacters: [String] = [],
+        reminderPrompt: String = ""
     ) {
         self.activeAPI = activeAPI
         self.activeModel = activeModel
@@ -197,6 +203,7 @@ struct AppSettings: Codable {
         self.imageGenerationSettings = imageGenerationSettings
         self.characterPersonas = characterPersonas
         self.pinnedCharacters = pinnedCharacters
+        self.reminderPrompt = reminderPrompt
     }
 
     static let `default` = AppSettings(

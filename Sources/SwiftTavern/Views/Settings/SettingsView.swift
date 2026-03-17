@@ -662,6 +662,30 @@ struct SettingsView: View {
 
             Divider()
 
+            // Reminder Prompt
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Reminder Prompt")
+                    .font(.system(size: 12, weight: .medium))
+
+                TextEditor(text: $viewModel.reminderPrompt)
+                    .font(.system(size: 12))
+                    .frame(minHeight: 60, maxHeight: 120)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .background(Color(.controlBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(.separatorColor), lineWidth: 0.5))
+                    .onChange(of: viewModel.reminderPrompt) { _, _ in
+                        viewModel.saveConfiguration()
+                    }
+
+                Text("A short instruction injected near the end of the prompt in longer conversations (6+ messages). Use this to remind the model about tense, writing style, or formatting. Supports {{char}} and {{user}} variables.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            Divider()
+
             // Developer mode
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("Developer Mode", isOn: $viewModel.developerMode)

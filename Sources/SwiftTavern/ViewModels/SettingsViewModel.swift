@@ -60,6 +60,7 @@ final class SettingsViewModel {
     var showChatButtonLabels: Bool
     var showIndividualConversations: Bool
     var developerMode: Bool
+    var reminderPrompt: String
     var globalWorldLore: String?
     var chatDisplayLimit: Int
     var chatMessageLengthLimit: Int
@@ -108,6 +109,7 @@ final class SettingsViewModel {
         self.showChatButtonLabels = appState.settings.showChatButtonLabels
         self.showIndividualConversations = appState.settings.showIndividualConversations
         self.developerMode = appState.settings.developerMode
+        self.reminderPrompt = appState.settings.reminderPrompt
         self.globalWorldLore = appState.settings.globalWorldLore
         self.chatDisplayLimit = appState.settings.chatDisplayLimit
         self.chatMessageLengthLimit = appState.settings.chatMessageLengthLimit
@@ -286,6 +288,7 @@ final class SettingsViewModel {
         appState.settings.showChatButtonLabels = showChatButtonLabels
         appState.settings.showIndividualConversations = showIndividualConversations
         appState.settings.developerMode = developerMode
+        appState.settings.reminderPrompt = reminderPrompt
         appState.settings.globalWorldLore = globalWorldLore
         appState.settings.chatDisplayLimit = chatDisplayLimit
         appState.settings.chatMessageLengthLimit = chatMessageLengthLimit

@@ -66,7 +66,8 @@ enum PromptBuilder {
         systemPrompt: String? = nil,
         worldInfoEntries: [WorldInfoEntry] = [],
         persona: Persona? = nil,
-        imageInjectionPrompt: String? = nil
+        imageInjectionPrompt: String? = nil,
+        reminderPrompt: String? = nil
     ) -> [LLMMessage] {
         var messages: [LLMMessage] = []
 
@@ -176,12 +177,18 @@ enum PromptBuilder {
             }
         }
 
-        // 12. Post-history instructions (appended as system message after history)
+        // 12. Reminder prompt (injected near end to reinforce instructions in long conversations)
+        if let reminderPrompt, !reminderPrompt.isEmpty {
+            let resolved = reminderPrompt.replacingTemplateVars(charName: character.name, userName: userName)
+            messages.append(LLMMessage(role: .system, content: resolved))
+        }
+
+        // 13. Post-history instructions (appended as system message after history)
         if !postInstructions.isEmpty {
             messages.append(LLMMessage(role: .system, content: postInstructions))
         }
 
-        // 13. Image generation injection prompt (when LLM-triggered mode is active)
+        // 14. Image generation injection prompt (when LLM-triggered mode is active)
         if let imageInjectionPrompt, !imageInjectionPrompt.isEmpty {
             messages.append(LLMMessage(role: .system, content: imageInjectionPrompt))
         }

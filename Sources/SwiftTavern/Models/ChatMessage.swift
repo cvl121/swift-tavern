@@ -23,6 +23,12 @@ struct ChatMessage: Codable, Identifiable, Equatable {
     /// Whether this message has an associated generated image
     var hasImage: Bool { imageURL != nil }
 
+    /// Identity that changes when message content is edited, forcing SwiftUI to re-render.
+    /// Combines the stable UUID with a content hash so edits are reflected immediately.
+    var stableIdentity: String {
+        "\(messageId)-\(mes.hashValue)-\(swipeId ?? 0)"
+    }
+
     enum CodingKeys: String, CodingKey {
         case name, mes, extra, swipes
         case messageId = "message_id"

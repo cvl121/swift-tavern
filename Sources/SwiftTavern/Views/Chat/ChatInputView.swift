@@ -18,11 +18,18 @@ struct ChatInputView: View {
     var onGenerateImage: (() -> Void)?
 
     @FocusState private var isInputFocused: Bool
-    @State private var dragStartHeight: CGFloat = 0
-    @State private var displayHeight: CGFloat = 0
+    /// Committed height that drives the TextEditor frame (only updates on drag end)
+    @State private var committedHeight: CGFloat = 0
+    /// Transient height while dragging (drives the frame during gesture)
+    @GestureState private var dragOffset: CGFloat = 0
 
     private let minInputHeight: CGFloat = 32
     private let maxInputHeight: CGFloat = 200
+
+    /// The effective height: committed + drag offset, clamped
+    private var effectiveHeight: CGFloat {
+        min(max(committedHeight - dragOffset, minInputHeight), maxInputHeight)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,15 +51,13 @@ struct ChatInputView: View {
             .cursor(.resizeUpDown)
             .gesture(
                 DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        if dragStartHeight == 0 {
-                            dragStartHeight = displayHeight
-                        }
-                        displayHeight = min(max(dragStartHeight - value.translation.height, minInputHeight), maxInputHeight)
+                    .updating($dragOffset) { value, state, _ in
+                        state = value.translation.height
                     }
-                    .onEnded { _ in
-                        dragStartHeight = 0
-                        inputHeight = displayHeight
+                    .onEnded { value in
+                        let newHeight = min(max(committedHeight - value.translation.height, minInputHeight), maxInputHeight)
+                        committedHeight = newHeight
+                        inputHeight = newHeight
                         onHeightChanged?()
                     }
             )
@@ -85,7 +90,7 @@ struct ChatInputView: View {
             HStack(alignment: .bottom, spacing: 8) {
                 TextEditor(text: $text)
                     .font(.system(size: fontSize))
-                    .frame(height: displayHeight)
+                    .frame(height: effectiveHeight)
                     .scrollContentBackground(.hidden)
                     .padding(8)
                     .background(Color(.controlBackgroundColor))
@@ -127,13 +132,11 @@ struct ChatInputView: View {
             .padding(.top, 4)
         }
         .onAppear {
-            displayHeight = inputHeight
+            committedHeight = inputHeight
         }
         .onChange(of: inputHeight) { _, newValue in
             // Sync from binding when changed externally (e.g. conversation switch)
-            if dragStartHeight == 0 {
-                displayHeight = newValue
-            }
+            committedHeight = newValue
         }
         .onKeyPress(.return, phases: .down) { keyPress in
             if isGenerating {

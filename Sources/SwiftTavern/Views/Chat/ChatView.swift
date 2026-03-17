@@ -61,18 +61,18 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(chatVM.indexedDisplayMessages, id: \.element.id) { offset, message in
+                        ForEach(chatVM.indexedDisplayMessages, id: \.element.stableIdentity) { offset, message in
                             // Use offset (original index in full messages array) for operations
                             messageBubble(index: offset, message: message)
-                                .id(message.id)
+                                .id(message.stableIdentity)
                                 .onAppear {
                                     DispatchQueue.main.async {
-                                        visibleMessageIDs.insert(message.id)
+                                        visibleMessageIDs.insert(message.stableIdentity)
                                     }
                                 }
                                 .onDisappear {
                                     DispatchQueue.main.async {
-                                        visibleMessageIDs.remove(message.id)
+                                        visibleMessageIDs.remove(message.stableIdentity)
                                     }
                                 }
                         }
@@ -202,20 +202,21 @@ struct ChatView: View {
                     }
                 }
                 .onChange(of: chatVM.isGenerating) { _, isGenerating in
-                    if !isGenerating && chatVM.autoScrollEnabled {
+                    if !isGenerating {
+                        // Always scroll to bottom when generation finishes
                         scrollToBottom(proxy: proxy, animated: true)
                     }
                 }
                 .onChange(of: chatVM.messages.last?.swipeId) {
                     // Re-anchor scroll when user swipes between response versions
                     if let lastMsg = chatVM.messages.last {
-                        proxy.scrollTo(lastMsg.id, anchor: .bottom)
+                        proxy.scrollTo(lastMsg.stableIdentity, anchor: .bottom)
                     }
                 }
                 .onChange(of: chatVM.editingMessageIndex) { _, newIndex in
                     // Scroll to the message being edited so it's visible
                     if let index = newIndex, index < chatVM.messages.count {
-                        let messageID = chatVM.messages[index].id
+                        let messageID = chatVM.messages[index].stableIdentity
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                             withAnimation(.easeOut(duration: 0.2)) {
                                 proxy.scrollTo(messageID, anchor: .top)
@@ -226,7 +227,7 @@ struct ChatView: View {
                 .onChange(of: chatVM.greetingSwipeIndex) {
                     // Re-anchor scroll when user swipes between greeting versions
                     if let firstMsg = chatVM.messages.first {
-                        proxy.scrollTo(firstMsg.id, anchor: .top)
+                        proxy.scrollTo(firstMsg.stableIdentity, anchor: .top)
                     }
                 }
             }
@@ -434,8 +435,8 @@ struct ChatView: View {
         guard !visibleMessageIDs.isEmpty else { return nil }
         // Walk messages in order and return the first one that is visible
         for item in chatVM.indexedDisplayMessages {
-            if visibleMessageIDs.contains(item.element.id) {
-                return item.element.id
+            if visibleMessageIDs.contains(item.element.stableIdentity) {
+                return item.element.stableIdentity
             }
         }
         return visibleMessageIDs.first
