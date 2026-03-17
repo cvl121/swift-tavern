@@ -14,8 +14,10 @@ struct AvatarImageView: View {
     let name: String
     var size: CGFloat = 40
 
-    /// Cache of data hashes known to be placeholder/invalid images
+    /// Cache of data keys known to be placeholder/invalid images (1x1 px)
     private static var invalidImageKeys = Set<String>()
+    /// Cache of data keys known to have valid dimensions (skip re-checking CGImageSource)
+    private static var validImageKeys = Set<String>()
 
     var body: some View {
         ZStack {
@@ -52,14 +54,17 @@ struct AvatarImageView: View {
         // Fast path: already known to be invalid
         if Self.invalidImageKeys.contains(key) { return nil }
 
-        // Check image dimensions to reject 1x1 placeholder PNGs
-        if let source = CGImageSourceCreateWithData(data as CFData, nil),
-           let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
-           let width = props[kCGImagePropertyPixelWidth as String] as? Int,
-           let height = props[kCGImagePropertyPixelHeight as String] as? Int,
-           width <= 1, height <= 1 {
-            Self.invalidImageKeys.insert(key)
-            return nil
+        // Only run CGImageSource dimension check if we haven't validated this key before
+        if !Self.validImageKeys.contains(key) {
+            if let source = CGImageSourceCreateWithData(data as CFData, nil),
+               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+               let width = props[kCGImagePropertyPixelWidth as String] as? Int,
+               let height = props[kCGImagePropertyPixelHeight as String] as? Int,
+               width <= 1, height <= 1 {
+                Self.invalidImageKeys.insert(key)
+                return nil
+            }
+            Self.validImageKeys.insert(key)
         }
 
         if size <= AvatarImageView.sizeMedium {

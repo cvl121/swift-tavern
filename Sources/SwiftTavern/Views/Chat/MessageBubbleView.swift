@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Display a single chat message with avatar and action buttons
 struct MessageBubbleView: View {
@@ -81,11 +82,12 @@ struct MessageBubbleView: View {
                             .font(.system(size: chatStyle?.fontSize ?? 13))
                             .textSelection(.enabled)
 
-                        // Generated image
+                        // Generated image (loaded via cache to avoid re-reading from disk)
                         if message.hasImage, let imageURL = message.imageURL,
                            let basePath = imageBasePath {
                             let imagePath = basePath.appendingPathComponent(imageURL)
-                            if let nsImage = NSImage(contentsOf: imagePath) {
+                            let cacheKey = imageURL
+                            if let nsImage = ImageCache.shared.image(for: cacheKey) ?? loadAndCacheImage(path: imagePath, key: cacheKey) {
                                 Image(nsImage: nsImage)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
@@ -189,6 +191,13 @@ struct MessageBubbleView: View {
         .padding(.top, 2)
         .opacity(isHovered ? 1.0 : 0.0)
         .animation(.easeInOut(duration: 0.15), value: isHovered)
+    }
+
+    /// Load a generated image from disk and cache it for future renders
+    private func loadAndCacheImage(path: URL, key: String) -> NSImage? {
+        guard let nsImage = NSImage(contentsOf: path) else { return nil }
+        ImageCache.shared.setImage(nsImage, for: key)
+        return nsImage
     }
 
     private func actionButton(_ label: String, icon: String, action: @escaping () -> Void, tint: Color? = nil) -> some View {

@@ -120,11 +120,19 @@ final class ChatViewModel {
         return allMessages
     }
 
+    /// Cached indexed display messages to avoid recalculating on every view body access.
+    private var cachedIndexedMessages: [(offset: Int, element: ChatMessage)] = []
+    private var cachedIndexedKey: String = ""
+
     /// Display messages with their indices into the full messages array, filtered by bookmark state.
-    /// Pre-computed to avoid recalculating in the view body on every render.
     var indexedDisplayMessages: [(offset: Int, element: ChatMessage)] {
         let allMessages = appState?.currentChat?.messages ?? []
         let limit = appState?.settings.chatDisplayLimit ?? 0
+        let bookmarksOnly = showingBookmarksOnly
+        let key = "\(allMessages.count)-\(allMessages.last?.stableIdentity ?? "")-\(limit)-\(bookmarksOnly)"
+
+        if key == cachedIndexedKey { return cachedIndexedMessages }
+
         let startIndex: Int
         if limit > 0 && allMessages.count > limit {
             startIndex = allMessages.count - limit
@@ -137,10 +145,10 @@ final class ChatViewModel {
             (offset: $0.offset + startIndex, element: $0.element)
         }
 
-        if showingBookmarksOnly {
-            return indexed.filter { $0.element.isBookmarked }
-        }
-        return indexed
+        let result = bookmarksOnly ? indexed.filter { $0.element.isBookmarked } : indexed
+        cachedIndexedMessages = result
+        cachedIndexedKey = key
+        return result
     }
 
     /// Truncate a message for display if a length limit is set

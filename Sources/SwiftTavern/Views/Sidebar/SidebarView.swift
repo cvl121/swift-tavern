@@ -486,7 +486,6 @@ private struct ConversationRowView: View {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
         )
-        .cornerRadius(6)
         .contentShape(Rectangle())
     }
 }
