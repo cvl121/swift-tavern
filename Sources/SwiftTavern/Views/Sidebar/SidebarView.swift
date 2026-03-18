@@ -142,7 +142,6 @@ struct SidebarView: View {
     private var groupedConversationsList: some View {
         ForEach(filteredConversations) { entry in
             characterConversationRow(entry: entry)
-                .padding(.horizontal, 4)
         }
     }
 
@@ -471,21 +470,23 @@ private struct ConversationRowView: View {
 
             Spacer()
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 6)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected
-                    ? Color.accentColor.opacity(0.18)
-                    : isHovered
-                        ? Color.primary.opacity(0.06)
-                        : Color.clear)
+            isSelected
+                ? Color.accentColor.opacity(0.18)
+                : isHovered
+                    ? Color.primary.opacity(0.06)
+                    : Color.clear
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
-        )
+        .overlay(alignment: .bottom) {
+            if !isSelected {
+                Rectangle()
+                    .fill(Color(.separatorColor).opacity(0.3))
+                    .frame(height: 0.5)
+            }
+        }
         .contentShape(Rectangle())
     }
 }

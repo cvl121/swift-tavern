@@ -13,6 +13,8 @@ struct ChatView: View {
     @State private var visibleMessageIDs: Set<String> = []
     @State private var cachedUserAvatarData: Data?
     @State private var cachedUserAvatarKey: String = ""
+    /// Tracks the measured height of the input container overlay
+    @State private var inputAreaHeight: CGFloat = 100
 
     /// Load avatar data for the active user persona (cached to avoid repeated disk I/O)
     private var userAvatarData: Data? {
@@ -57,222 +59,226 @@ struct ChatView: View {
                 Divider()
             }
 
-            // Messages list
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(chatVM.indexedDisplayMessages, id: \.element.stableIdentity) { offset, message in
-                            // Use offset (original index in full messages array) for operations
-                            messageBubble(index: offset, message: message)
-                                .id(message.stableIdentity)
-                                .onAppear {
-                                    DispatchQueue.main.async {
-                                        visibleMessageIDs.insert(message.stableIdentity)
+            // Messages list with input overlay
+            ZStack(alignment: .bottom) {
+                // Messages scroll area
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(chatVM.indexedDisplayMessages, id: \.element.stableIdentity) { offset, message in
+                                messageBubble(index: offset, message: message)
+                                    .id(message.stableIdentity)
+                                    .onAppear {
+                                        DispatchQueue.main.async {
+                                            visibleMessageIDs.insert(message.stableIdentity)
+                                        }
                                     }
-                                }
-                                .onDisappear {
-                                    DispatchQueue.main.async {
-                                        visibleMessageIDs.remove(message.stableIdentity)
+                                    .onDisappear {
+                                        DispatchQueue.main.async {
+                                            visibleMessageIDs.remove(message.stableIdentity)
+                                        }
                                     }
-                                }
-                        }
-
-                        // Streaming indicator
-                        if chatVM.isGenerating {
-                            StreamingIndicatorView(
-                                characterName: chatVM.characterName,
-                                text: chatVM.streamingText,
-                                avatarData: appState.selectedCharacter?.avatarData,
-                                chatStyle: activeChatStyle
-                            )
-                            .id("streaming")
-                        }
-
-                        // Image generation indicator
-                        if chatVM.isGeneratingImage {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .controlSize(.small)
-                                Text("Generating image...")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
                             }
-                            .padding(12)
-                        }
 
-                        // Image generation error
-                        if let imgError = chatVM.imageGenerationError {
-                            HStack(spacing: 8) {
-                                Image(systemName: "photo.badge.exclamationmark")
-                                    .foregroundColor(.orange)
-                                Text(imgError)
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(2)
-                                Button("Dismiss") { chatVM.imageGenerationError = nil }
-                                    .controlSize(.small)
+                            // Streaming indicator
+                            if chatVM.isGenerating {
+                                StreamingIndicatorView(
+                                    characterName: chatVM.characterName,
+                                    text: chatVM.streamingText,
+                                    avatarData: appState.selectedCharacter?.avatarData,
+                                    chatStyle: activeChatStyle
+                                )
+                                .id("streaming")
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                        }
 
-                        // Error with retry
-                        if let error = chatVM.errorMessage {
-                            VStack(spacing: 8) {
+                            // Image generation indicator
+                            if chatVM.isGeneratingImage {
                                 HStack(spacing: 8) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.orange)
-                                    Text(error)
+                                    ProgressView()
+                                        .controlSize(.small)
+                                    Text("Generating image...")
                                         .font(.system(size: 12))
                                         .foregroundColor(.secondary)
-                                        .lineLimit(3)
                                 }
+                                .padding(12)
+                            }
+
+                            // Image generation error
+                            if let imgError = chatVM.imageGenerationError {
                                 HStack(spacing: 8) {
-                                    Button("Dismiss") {
-                                        chatVM.errorMessage = nil
+                                    Image(systemName: "photo.badge.exclamationmark")
+                                        .foregroundColor(.orange)
+                                    Text(imgError)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(2)
+                                    Button("Dismiss") { chatVM.imageGenerationError = nil }
+                                        .controlSize(.small)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                            }
+
+                            // Error with retry
+                            if let error = chatVM.errorMessage {
+                                VStack(spacing: 8) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundColor(.orange)
+                                        Text(error)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(3)
                                     }
-                                    .controlSize(.small)
-                                    .buttonStyle(.bordered)
-                                    Button("Retry") {
-                                        chatVM.errorMessage = nil
-                                        chatVM.retryLastResponse()
+                                    HStack(spacing: 8) {
+                                        Button("Dismiss") {
+                                            chatVM.errorMessage = nil
+                                        }
+                                        .controlSize(.small)
+                                        .buttonStyle(.bordered)
+                                        Button("Retry") {
+                                            chatVM.errorMessage = nil
+                                            chatVM.retryLastResponse()
+                                        }
+                                        .controlSize(.small)
+                                        .buttonStyle(.borderedProminent)
                                     }
-                                    .controlSize(.small)
-                                    .buttonStyle(.borderedProminent)
+                                }
+                                .padding(12)
+                                .background(Color.orange.opacity(0.08))
+                                .cornerRadius(8)
+                                .padding(.horizontal, 12)
+                            }
+
+                            // Generate button when last message is from user (no response yet)
+                            if !chatVM.isGenerating,
+                               chatVM.errorMessage == nil,
+                               let lastMsg = chatVM.messages.last,
+                               lastMsg.isUser {
+                                Button(action: { chatVM.generateResponse() }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.system(size: 12))
+                                        Text("Generate Response")
+                                            .font(.system(size: 12))
+                                    }
+                                }
+                                .controlSize(.small)
+                                .buttonStyle(.borderedProminent)
+                                .padding()
+                            }
+
+                            // Bottom spacer so messages don't hide behind the input overlay
+                            Color.clear
+                                .frame(height: inputAreaHeight)
+                                .id("bottom")
+                        }
+                        .padding(.top, 8)
+                    }
+                    .background(FocusDismissBackground())
+                    .onAppear {
+                        if let anchor = chatVM.savedScrollAnchor() {
+                            proxy.scrollTo(anchor, anchor: .top)
+                        } else {
+                            scrollToBottom(proxy: proxy, animated: false)
+                        }
+                    }
+                    .onDisappear {
+                        let topmost = topmostVisibleMessageID()
+                        chatVM.saveScrollPosition(visibleMessageID: topmost)
+                        visibleMessageIDs.removeAll()
+                    }
+                    .onChange(of: chatVM.messages.count) {
+                        if chatVM.autoScrollEnabled {
+                            scrollToBottom(proxy: proxy, animated: true)
+                        }
+                    }
+                    .onChange(of: chatVM.streamingText) {
+                        guard chatVM.autoScrollEnabled else { return }
+                        let now = Date()
+                        if now.timeIntervalSince(lastStreamScrollTime) > 0.15 {
+                            lastStreamScrollTime = now
+                            scrollToBottom(proxy: proxy, animated: false)
+                        }
+                    }
+                    .onChange(of: chatVM.isGenerating) { _, isGenerating in
+                        if !isGenerating {
+                            scrollToBottom(proxy: proxy, animated: true)
+                        }
+                    }
+                    .onChange(of: chatVM.messages.last?.swipeId) {
+                        if let lastMsg = chatVM.messages.last {
+                            proxy.scrollTo(lastMsg.stableIdentity, anchor: .bottom)
+                        }
+                    }
+                    .onChange(of: chatVM.editingMessageIndex) { _, newIndex in
+                        if let index = newIndex, index < chatVM.messages.count {
+                            let messageID = chatVM.messages[index].stableIdentity
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    proxy.scrollTo(messageID, anchor: .top)
                                 }
                             }
-                            .padding(12)
-                            .background(Color.orange.opacity(0.08))
-                            .cornerRadius(8)
-                            .padding(.horizontal, 12)
                         }
+                    }
+                    .onChange(of: chatVM.greetingSwipeIndex) {
+                        if let firstMsg = chatVM.messages.first {
+                            proxy.scrollTo(firstMsg.stableIdentity, anchor: .top)
+                        }
+                    }
+                }
 
-                        // Generate button when last message is from user (no response yet)
-                        if !chatVM.isGenerating,
-                           chatVM.errorMessage == nil,
-                           let lastMsg = chatVM.messages.last,
-                           lastMsg.isUser {
-                            Button(action: { chatVM.generateResponse() }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "arrow.clockwise")
-                                        .font(.system(size: 12))
-                                    Text("Generate Response")
-                                        .font(.system(size: 12))
-                                }
-                            }
-                            .controlSize(.small)
-                            .buttonStyle(.borderedProminent)
-                            .padding()
-                        }
+                // Input container overlaid at the bottom
+                VStack(spacing: 0) {
+                    Divider()
 
-                        // Invisible anchor at the very bottom for scroll targeting
-                        Color.clear
-                            .frame(height: 1)
-                            .id("bottom")
-                    }
-                    .padding(.vertical, 8)
-                }
-                .background(FocusDismissBackground())
-                .onAppear {
-                    // Restore saved scroll position, or default to bottom
-                    if let anchor = chatVM.savedScrollAnchor() {
-                        proxy.scrollTo(anchor, anchor: .top)
-                    } else {
-                        scrollToBottom(proxy: proxy, animated: false)
-                    }
-                }
-                .onDisappear {
-                    // Save the topmost visible message for scroll restoration
-                    let topmost = topmostVisibleMessageID()
-                    chatVM.saveScrollPosition(visibleMessageID: topmost)
-                    visibleMessageIDs.removeAll()
-                }
-                .onChange(of: chatVM.messages.count) {
-                    if chatVM.autoScrollEnabled {
-                        scrollToBottom(proxy: proxy, animated: true)
-                    }
-                }
-                .onChange(of: chatVM.streamingText) {
-                    guard chatVM.autoScrollEnabled else { return }
-                    // Throttle scroll-to-bottom during streaming to avoid layout thrashing
-                    let now = Date()
-                    if now.timeIntervalSince(lastStreamScrollTime) > 0.15 {
-                        lastStreamScrollTime = now
-                        scrollToBottom(proxy: proxy, animated: false)
-                    }
-                }
-                .onChange(of: chatVM.isGenerating) { _, isGenerating in
-                    if !isGenerating {
-                        // Always scroll to bottom when generation finishes
-                        scrollToBottom(proxy: proxy, animated: true)
-                    }
-                }
-                .onChange(of: chatVM.messages.last?.swipeId) {
-                    // Re-anchor scroll when user swipes between response versions
-                    if let lastMsg = chatVM.messages.last {
-                        proxy.scrollTo(lastMsg.stableIdentity, anchor: .bottom)
-                    }
-                }
-                .onChange(of: chatVM.editingMessageIndex) { _, newIndex in
-                    // Scroll to the message being edited so it's visible
-                    if let index = newIndex, index < chatVM.messages.count {
-                        let messageID = chatVM.messages[index].stableIdentity
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo(messageID, anchor: .top)
-                            }
+                    if chatVM.showStopOptions {
+                        HStack(spacing: 12) {
+                            Text("Generation stopped. Keep partial response?")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Button("Discard") { chatVM.discardPartialResponse() }
+                                .controlSize(.small)
+                                .buttonStyle(.bordered)
+                            Button("Keep") { chatVM.keepPartialResponse() }
+                                .controlSize(.small)
+                                .buttonStyle(.borderedProminent)
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
                     }
+
+                    ChatInputView(
+                        text: $chatVM.inputText,
+                        initialHeight: CGFloat(appState.settings.chatInputHeight),
+                        isGenerating: chatVM.isGenerating,
+                        sendOnEnter: appState.settings.sendOnEnter,
+                        activeModel: appState.currentAPIConfiguration()?.model,
+                        characterName: chatVM.characterName,
+                        tokenCount: chatVM.estimatedTokenCount,
+                        fontSize: CGFloat(activeChatStyle?.fontSize ?? 13),
+                        imageGenEnabled: appState.settings.imageGenerationSettings.enabled,
+                        isGeneratingImage: chatVM.isGeneratingImage,
+                        onHeightChanged: { newHeight in
+                            appState.settings.chatInputHeight = Double(newHeight)
+                            appState.saveSettings()
+                        },
+                        onSend: { chatVM.sendMessage() },
+                        onStop: { chatVM.stopGenerating() },
+                        onGenerateImage: { chatVM.openImagePromptEditor() }
+                    )
                 }
-                .onChange(of: chatVM.greetingSwipeIndex) {
-                    // Re-anchor scroll when user swipes between greeting versions
-                    if let firstMsg = chatVM.messages.first {
-                        proxy.scrollTo(firstMsg.stableIdentity, anchor: .top)
+                .background(Color(.windowBackgroundColor))
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(key: InputAreaHeightKey.self, value: geo.size.height)
                     }
+                )
+                .onPreferenceChange(InputAreaHeightKey.self) { height in
+                    inputAreaHeight = height
                 }
             }
-
-            Divider()
-
-            // Input area
-            // Stop options (keep/discard partial response)
-            if chatVM.showStopOptions {
-                HStack(spacing: 12) {
-                    Text("Generation stopped. Keep partial response?")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Button("Discard") { chatVM.discardPartialResponse() }
-                        .controlSize(.small)
-                        .buttonStyle(.bordered)
-                    Button("Keep") { chatVM.keepPartialResponse() }
-                        .controlSize(.small)
-                        .buttonStyle(.borderedProminent)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color(.controlBackgroundColor))
-            }
-
-            ChatInputView(
-                text: $chatVM.inputText,
-                initialHeight: CGFloat(appState.settings.chatInputHeight),
-                isGenerating: chatVM.isGenerating,
-                sendOnEnter: appState.settings.sendOnEnter,
-                activeModel: appState.currentAPIConfiguration()?.model,
-                characterName: chatVM.characterName,
-                tokenCount: chatVM.estimatedTokenCount,
-                fontSize: CGFloat(activeChatStyle?.fontSize ?? 13),
-                imageGenEnabled: appState.settings.imageGenerationSettings.enabled,
-                isGeneratingImage: chatVM.isGeneratingImage,
-                onHeightChanged: { newHeight in
-                    appState.settings.chatInputHeight = Double(newHeight)
-                    appState.saveSettings()
-                },
-                onSend: { chatVM.sendMessage() },
-                onStop: { chatVM.stopGenerating() },
-                onGenerateImage: { chatVM.openImagePromptEditor() }
-            )
         }
         // Auto-save indicator
         .overlay(alignment: .bottomTrailing) {
@@ -838,6 +844,14 @@ struct ChatView: View {
                 }
             }
         }
+    }
+}
+
+/// Preference key to measure the input area overlay height
+private struct InputAreaHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 100
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
