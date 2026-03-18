@@ -470,8 +470,8 @@ private struct ConversationRowView: View {
 
             Spacer()
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
+        .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             isSelected
@@ -480,13 +480,6 @@ private struct ConversationRowView: View {
                     ? Color.primary.opacity(0.06)
                     : Color.clear
         )
-        .overlay(alignment: .bottom) {
-            if !isSelected {
-                Rectangle()
-                    .fill(Color(.separatorColor).opacity(0.3))
-                    .frame(height: 0.5)
-            }
-        }
         .contentShape(Rectangle())
     }
 }
