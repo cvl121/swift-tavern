@@ -22,9 +22,9 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             // Scrollable conversation list
             ScrollView {
-                LazyVStack(spacing: 2) {
+                LazyVStack(spacing: 0) {
                     conversationsSection
-                        .padding(.top, 12)
+                        .padding(.top, 38)
                     if appState.settings.groupChatsEnabled {
                         groupsSection
                     }
@@ -142,8 +142,8 @@ struct SidebarView: View {
     private var groupedConversationsList: some View {
         ForEach(filteredConversations) { entry in
             characterConversationRow(entry: entry)
+                .padding(.horizontal, 4)
         }
-        .padding(.horizontal, 6)
     }
 
     private func characterConversationRow(entry: CharacterEntry) -> some View {
@@ -471,7 +471,7 @@ private struct ConversationRowView: View {
 
             Spacer()
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .padding(.horizontal, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(

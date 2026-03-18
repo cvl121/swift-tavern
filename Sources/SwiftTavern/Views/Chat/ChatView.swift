@@ -256,10 +256,7 @@ struct ChatView: View {
 
             ChatInputView(
                 text: $chatVM.inputText,
-                inputHeight: Binding(
-                    get: { CGFloat(appState.settings.chatInputHeight) },
-                    set: { appState.settings.chatInputHeight = Double($0) }
-                ),
+                initialHeight: CGFloat(appState.settings.chatInputHeight),
                 isGenerating: chatVM.isGenerating,
                 sendOnEnter: appState.settings.sendOnEnter,
                 activeModel: appState.currentAPIConfiguration()?.model,
@@ -268,7 +265,10 @@ struct ChatView: View {
                 fontSize: CGFloat(activeChatStyle?.fontSize ?? 13),
                 imageGenEnabled: appState.settings.imageGenerationSettings.enabled,
                 isGeneratingImage: chatVM.isGeneratingImage,
-                onHeightChanged: { appState.saveSettings() },
+                onHeightChanged: { newHeight in
+                    appState.settings.chatInputHeight = Double(newHeight)
+                    appState.saveSettings()
+                },
                 onSend: { chatVM.sendMessage() },
                 onStop: { chatVM.stopGenerating() },
                 onGenerateImage: { chatVM.openImagePromptEditor() }

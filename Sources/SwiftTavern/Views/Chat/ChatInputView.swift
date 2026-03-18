@@ -3,7 +3,7 @@ import SwiftUI
 /// Chat message input with send button and configurable enter behavior
 struct ChatInputView: View {
     @Binding var text: String
-    @Binding var inputHeight: CGFloat
+    let initialHeight: CGFloat
     let isGenerating: Bool
     let sendOnEnter: Bool
     var activeModel: String?
@@ -12,24 +12,20 @@ struct ChatInputView: View {
     var fontSize: CGFloat = 13
     var imageGenEnabled: Bool = false
     var isGeneratingImage: Bool = false
-    var onHeightChanged: (() -> Void)?
+    var onHeightChanged: ((CGFloat) -> Void)?
     let onSend: () -> Void
     let onStop: () -> Void
     var onGenerateImage: (() -> Void)?
 
     @FocusState private var isInputFocused: Bool
-    /// Committed height that drives the TextEditor frame (only updates on drag end)
-    @State private var committedHeight: CGFloat = 0
-    /// Transient height while dragging (drives the frame during gesture)
-    @GestureState private var dragOffset: CGFloat = 0
+    /// The current height of the input field, managed entirely locally to avoid
+    /// propagating every frame change through @Observable bindings (which causes stutter).
+    @State private var localHeight: CGFloat = 0
+    @State private var dragStartHeight: CGFloat = 0
+    @State private var isDragging = false
 
     private let minInputHeight: CGFloat = 32
     private let maxInputHeight: CGFloat = 200
-
-    /// The effective height: committed + drag offset, clamped
-    private var effectiveHeight: CGFloat {
-        min(max(committedHeight - dragOffset, minInputHeight), maxInputHeight)
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,14 +47,17 @@ struct ChatInputView: View {
             .cursor(.resizeUpDown)
             .gesture(
                 DragGesture(minimumDistance: 1)
-                    .updating($dragOffset) { value, state, _ in
-                        state = value.translation.height
+                    .onChanged { value in
+                        if !isDragging {
+                            isDragging = true
+                            dragStartHeight = localHeight
+                        }
+                        localHeight = min(max(dragStartHeight - value.translation.height, minInputHeight), maxInputHeight)
                     }
-                    .onEnded { value in
-                        let newHeight = min(max(committedHeight - value.translation.height, minInputHeight), maxInputHeight)
-                        committedHeight = newHeight
-                        inputHeight = newHeight
-                        onHeightChanged?()
+                    .onEnded { _ in
+                        isDragging = false
+                        dragStartHeight = 0
+                        onHeightChanged?(localHeight)
                     }
             )
 
@@ -90,7 +89,7 @@ struct ChatInputView: View {
             HStack(alignment: .bottom, spacing: 8) {
                 TextEditor(text: $text)
                     .font(.system(size: fontSize))
-                    .frame(height: effectiveHeight)
+                    .frame(height: localHeight)
                     .scrollContentBackground(.hidden)
                     .padding(8)
                     .background(Color(.controlBackgroundColor))
@@ -132,11 +131,14 @@ struct ChatInputView: View {
             .padding(.top, 4)
         }
         .onAppear {
-            committedHeight = inputHeight
+            localHeight = initialHeight
         }
-        .onChange(of: inputHeight) { _, newValue in
-            // Sync from binding when changed externally (e.g. conversation switch)
-            committedHeight = newValue
+        .onChange(of: initialHeight) { _, newValue in
+            // Sync from parent when changed externally (e.g. conversation switch),
+            // but not while the user is actively dragging
+            if !isDragging {
+                localHeight = newValue
+            }
         }
         .onKeyPress(.return, phases: .down) { keyPress in
             if isGenerating {

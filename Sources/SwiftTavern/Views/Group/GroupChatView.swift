@@ -44,14 +44,14 @@ struct GroupChatView: View {
             // Input
             ChatInputView(
                 text: $groupChatVM.inputText,
-                inputHeight: Binding(
-                    get: { CGFloat(appState.settings.chatInputHeight) },
-                    set: { appState.settings.chatInputHeight = Double($0) }
-                ),
+                initialHeight: CGFloat(appState.settings.chatInputHeight),
                 isGenerating: groupChatVM.isGenerating,
                 sendOnEnter: appState.settings.sendOnEnter,
                 fontSize: CGFloat(appState.settings.chatStyle.fontSize),
-                onHeightChanged: { appState.saveSettings() },
+                onHeightChanged: { newHeight in
+                    appState.settings.chatInputHeight = Double(newHeight)
+                    appState.saveSettings()
+                },
                 onSend: { groupChatVM.sendMessage() },
                 onStop: { groupChatVM.stopGenerating() }
             )
