@@ -20,17 +20,25 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Scrollable conversation list
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    conversationsSection
-                        .padding(.top, 38)
-                    if appState.settings.groupChatsEnabled {
-                        groupsSection
+            // MARK: - Conversations (scrollable, fills available space)
+            VStack(alignment: .leading, spacing: 0) {
+                sectionHeader("Conversations")
+                    .padding(.top, 38)
+
+                if filteredConversations.isEmpty {
+                    emptyConversationsView
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(filteredConversations) { entry in
+                                conversationRow(entry: entry)
+                            }
+                        }
                     }
+                    .scrollContentBackground(.hidden)
                 }
             }
-            .scrollContentBackground(.hidden)
+            .frame(maxHeight: .infinity)
             .onDrop(of: [.png, .json, .fileURL], isTargeted: $isDragTargeted) { providers in
                 handleDrop(providers: providers)
             }
@@ -44,13 +52,18 @@ struct SidebarView: View {
                 }
             }
 
-            Divider()
+            // MARK: - Groups (optional, compact)
+            if appState.settings.groupChatsEnabled {
+                Divider()
+                groupsSection
+            }
 
-            // Bottom navigation buttons
+            // MARK: - Bottom Navigation
+            Divider()
             navigationSection
         }
         .clipped()
-        // Character file importer (for sidebar import button)
+        // File importer
         .fileImporter(
             isPresented: $characterListVM.showingImporter,
             allowedContentTypes: [.png, .json],
@@ -60,7 +73,7 @@ struct SidebarView: View {
                 characterListVM.importCharacter(from: url)
             }
         }
-        // Export character file saver
+        // File exporter
         .fileExporter(
             isPresented: $characterListVM.showingExporter,
             document: characterListVM.exportDocument,
@@ -91,9 +104,6 @@ struct SidebarView: View {
         } message: {
             Text("Are you sure you want to delete the current conversation with \"\(pendingDeleteConversationEntry?.card.data.name ?? "")\"\(pendingDeleteMessageCount > 0 ? " (\(pendingDeleteMessageCount) messages)" : "")? This cannot be undone.")
         }
-        .onAppear { refreshChatDates() }
-        .onChange(of: appState.characters.count) { _, _ in refreshChatDates() }
-        .onChange(of: appState.currentChat?.messages.count) { _, _ in refreshCurrentChatDate() }
         // Group delete confirmation
         .alert("Delete Group", isPresented: $showGroupDeleteConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -109,43 +119,33 @@ struct SidebarView: View {
         } message: {
             Text("Are you sure you want to delete the group \"\(pendingDeleteGroup?.name ?? "")\"? This cannot be undone.")
         }
+        .onAppear { refreshChatDates() }
+        .onChange(of: appState.characters.count) { _, _ in refreshChatDates() }
+        .onChange(of: appState.currentChat?.messages.count) { _, _ in refreshCurrentChatDate() }
     }
 
-    // MARK: - Conversations Section
+    // MARK: - Conversations
 
-    @ViewBuilder
-    private var conversationsSection: some View {
-        sectionHeader("Conversations")
-
-        if filteredConversations.isEmpty {
-            VStack(spacing: 8) {
-                Image(systemName: "person.crop.circle.badge.plus")
-                    .font(.system(size: 24))
-                    .foregroundColor(.secondary)
-                Text("No characters yet")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                Button("Import Character") {
-                    characterListVM.showingImporter = true
-                }
-                .controlSize(.small)
-                .buttonStyle(.bordered)
+    private var emptyConversationsView: some View {
+        VStack(spacing: 8) {
+            Spacer()
+            Image(systemName: "person.crop.circle.badge.plus")
+                .font(.system(size: 24))
+                .foregroundColor(.secondary)
+            Text("No characters yet")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary)
+            Button("Import Character") {
+                characterListVM.showingImporter = true
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .controlSize(.small)
+            .buttonStyle(.bordered)
+            Spacer()
         }
-
-        groupedConversationsList
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
-    private var groupedConversationsList: some View {
-        ForEach(filteredConversations) { entry in
-            characterConversationRow(entry: entry)
-        }
-    }
-
-    private func characterConversationRow(entry: CharacterEntry) -> some View {
+    private func conversationRow(entry: CharacterEntry) -> some View {
         ConversationRowView(
             entry: entry,
             lastMessageDate: lastChatDate(for: entry),
@@ -173,7 +173,6 @@ struct SidebarView: View {
             Divider()
             Button("Delete Conversation", role: .destructive) {
                 pendingDeleteConversationEntry = entry
-                // Count messages in the conversation to show in confirmation
                 if appState.selectedCharacter?.filename == entry.filename,
                    let chat = appState.currentChat {
                     pendingDeleteMessageCount = chat.messages.count
@@ -189,17 +188,30 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Groups Section
+    // MARK: - Groups
 
-    @ViewBuilder
     private var groupsSection: some View {
-        sectionHeader("Groups", topPadding: 12)
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader("Groups")
 
-        ForEach(appState.groups) { group in
-            groupRow(group)
+            ForEach(appState.groups) { group in
+                groupRow(group)
+            }
+
+            Button(action: { groupChatVM.showingGroupEditor = true }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11))
+                    Text("New Group")
+                        .font(.system(size: 11))
+                }
+                .foregroundColor(.secondary)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 12)
+            }
+            .buttonStyle(.plain)
         }
-
-        newGroupButton
+        .padding(.vertical, 4)
     }
 
     private func groupRow(_ group: CharacterGroup) -> some View {
@@ -213,20 +225,15 @@ struct SidebarView: View {
                 .font(.system(size: 13, weight: .medium))
             Spacer()
         }
-        .padding(.vertical, 6)
-        .padding(.leading, 4)
+        .padding(.vertical, 5)
+        .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected
-                    ? Color.accentColor.opacity(0.18)
-                    : isHovered
-                        ? Color.primary.opacity(0.06)
-                        : Color.clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
+            isSelected
+                ? DS.Colors.surfaceSelected
+                : isHovered
+                    ? DS.Colors.surfaceHover
+                    : Color.clear
         )
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -243,84 +250,72 @@ struct SidebarView: View {
         }
     }
 
-    private var newGroupButton: some View {
-        Button(action: { groupChatVM.showingGroupEditor = true }) {
-            HStack(spacing: 8) {
-                Image(systemName: "plus")
-                    .font(.system(size: 12))
-                    .frame(width: 16)
-                Text("New Group")
-                    .font(.system(size: 12))
-            }
-            .foregroundColor(.secondary)
-            .padding(.vertical, 4)
-            .padding(.leading, 4)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func sectionHeader(_ title: String, topPadding: CGFloat = 6) -> some View {
-        Text(title)
-            .font(.system(size: 12, weight: .bold))
-            .foregroundColor(.primary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 8)
-            .padding(.top, topPadding)
-            .padding(.bottom, 6)
-    }
-
-    // MARK: - Navigation Section
+    // MARK: - Navigation
 
     private var navigationSection: some View {
-        VStack(spacing: 1) {
+        VStack(spacing: 2) {
             sidebarNavButton("Characters", icon: "person.text.rectangle", item: .characters)
             sidebarNavButton("World Lore", icon: "globe", item: .worldLore)
             sidebarNavButton("Personas", icon: "person.circle", item: .personas)
 
             Divider()
-                .padding(.vertical, 2)
+                .padding(.vertical, 3)
+                .padding(.horizontal, 8)
 
             sidebarNavButton("Settings", icon: "gear", item: .settings)
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 4)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 6)
     }
 
     private func sidebarNavButton(_ title: String, icon: String, item: SidebarItem) -> some View {
-        Button(action: { appState.selectedSidebarItem = item }) {
+        let isSelected = appState.selectedSidebarItem == item
+        let isHover = hoveredNavItem == item
+
+        return Button(action: { appState.selectedSidebarItem = item }) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 12))
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
                     .frame(width: 18)
                 Text(title)
-                    .font(.system(size: 12))
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
                 Spacer()
             }
-            .padding(.vertical, 5)
-            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(appState.selectedSidebarItem == item
-                        ? Color.accentColor.opacity(0.18)
-                        : hoveredNavItem == item
-                            ? Color.primary.opacity(0.06)
+                    .fill(isSelected
+                        ? DS.Colors.surfaceSelected
+                        : isHover
+                            ? DS.Colors.surfaceHover
                             : Color.clear)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(appState.selectedSidebarItem == item ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
-            )
-            .contentShape(Rectangle())
+            .contentShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
         .focusEffectDisabled()
         .onHover { hovering in
             hoveredNavItem = hovering ? item : nil
         }
-        .foregroundColor(appState.selectedSidebarItem == item ? .accentColor : .primary)
+        .foregroundColor(isSelected ? .accentColor : .primary)
         .accessibilityLabel(title)
         .help(title)
+    }
+
+    // MARK: - Helpers
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(.secondary)
+            .textCase(.uppercase)
+            .tracking(0.5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
     }
 
     private var filteredConversations: [CharacterEntry] {
@@ -329,19 +324,16 @@ struct SidebarView: View {
             let aPinned = pinned.contains(a.filename)
             let bPinned = pinned.contains(b.filename)
             if aPinned != bPinned { return aPinned }
-            // Within each group, sort by most recent chat date
             let aDate = chatDateCache[a.card.data.name] ?? .distantPast
             let bDate = chatDateCache[b.card.data.name] ?? .distantPast
             return aDate > bDate
         }
     }
 
-    /// Get the last chat date for a character (from cache)
     private func lastChatDate(for entry: CharacterEntry) -> Date? {
         chatDateCache[entry.card.data.name]
     }
 
-    /// Handle drag-and-drop of character files
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
         var handled = false
         for provider in providers {
@@ -362,16 +354,13 @@ struct SidebarView: View {
         return handled
     }
 
-    /// Delete the current conversation for the pending entry
     private func deleteCurrentConversation() {
         guard let entry = pendingDeleteConversationEntry else { return }
         let name = entry.card.data.name
 
-        // If this character is currently selected, delete the active chat
         if appState.selectedCharacter?.filename == entry.filename,
            let chat = appState.currentChat {
             try? appState.chatStorage.deleteChat(characterName: name, filename: chat.filename)
-            // Load the next most recent chat, or create a new one
             if let chats = try? appState.chatStorage.listChats(for: name),
                let mostRecent = chats.first {
                 appState.currentChat = try? appState.chatStorage.loadChat(
@@ -386,7 +375,6 @@ struct SidebarView: View {
                 )
             }
         } else {
-            // Character not currently selected — delete their most recent chat
             if let chats = try? appState.chatStorage.listChats(for: name),
                let mostRecent = chats.first {
                 try? appState.chatStorage.deleteChat(characterName: name, filename: mostRecent.filename)
@@ -397,7 +385,6 @@ struct SidebarView: View {
         refreshChatDates()
     }
 
-    /// Refresh all chat dates in one pass
     private func refreshChatDates() {
         var cache: [String: Date] = [:]
         for entry in characterListVM.filteredCharacters {
@@ -410,7 +397,6 @@ struct SidebarView: View {
         chatDateCache = cache
     }
 
-    /// Refresh only the current character's chat date (avoids iterating all characters on each message)
     private func refreshCurrentChatDate() {
         guard let character = appState.selectedCharacter else { return }
         let name = character.card.data.name
@@ -421,7 +407,8 @@ struct SidebarView: View {
     }
 }
 
-/// A conversation row showing character avatar, name, and last message date
+// MARK: - Conversation Row
+
 private struct ConversationRowView: View {
     let entry: CharacterEntry
     let lastMessageDate: Date?
@@ -451,7 +438,7 @@ private struct ConversationRowView: View {
                     if isPinned {
                         Image(systemName: "pin.fill")
                             .font(.system(size: 8))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.secondary.opacity(0.7))
                     }
                 }
 
@@ -470,17 +457,16 @@ private struct ConversationRowView: View {
 
             Spacer()
         }
-        .padding(.vertical, 3)
-        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             isSelected
-                ? Color.accentColor.opacity(0.18)
+                ? DS.Colors.surfaceSelected
                 : isHovered
-                    ? Color.primary.opacity(0.06)
+                    ? DS.Colors.surfaceHover
                     : Color.clear
         )
         .contentShape(Rectangle())
     }
 }
-

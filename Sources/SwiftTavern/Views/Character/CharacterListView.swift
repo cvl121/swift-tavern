@@ -81,7 +81,7 @@ struct CharacterListView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 1) {
+                    LazyVStack(spacing: 8) {
                         ForEach(characterListVM.filteredCharacters) { entry in
                             CharacterListRow(
                                 entry: entry,
@@ -141,11 +141,14 @@ private struct CharacterListRow: View {
     var onEdit: (() -> Void)? = nil
     var onExport: (() -> Void)? = nil
 
+    @State private var isHovered = false
+
     var body: some View {
         HStack(spacing: 14) {
             AvatarImageView(imageData: entry.avatarData, name: entry.card.data.name, size: AvatarImageView.sizeLarge)
+                .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(entry.card.data.name)
                     .font(.system(size: 14, weight: .semibold))
 
@@ -161,10 +164,11 @@ private struct CharacterListRow: View {
                         ForEach(entry.card.data.tags.prefix(4), id: \.self) { tag in
                             Text(tag)
                                 .font(.system(size: 10))
+                                .foregroundColor(.secondary)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.accentColor.opacity(0.1))
-                                .cornerRadius(4)
+                                .background(Color.accentColor.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
                         }
                     }
                 }
@@ -172,24 +176,36 @@ private struct CharacterListRow: View {
 
             Spacer()
 
-            Button(action: onNewChat) {
-                Label("Chat", systemImage: "bubble.left")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("Start or resume chat")
+            HStack(spacing: 8) {
+                Button(action: onNewChat) {
+                    Label("Chat", systemImage: "bubble.left")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .help("Start or resume chat")
 
-            Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.borderless)
+                .foregroundColor(.secondary)
+                .help("Delete Character")
             }
-            .buttonStyle(.borderless)
-            .help("Delete Character")
+            .opacity(isHovered ? 1 : 0.6)
         }
-        .padding(12)
-        .background(Color(.controlBackgroundColor))
-        .cornerRadius(8)
-        .contentShape(Rectangle())
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(.controlBackgroundColor).opacity(isHovered ? 0.7 : 0.45))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color(.separatorColor).opacity(0.2), lineWidth: 0.5)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 10))
         .onTapGesture(perform: onSelect)
+        .onHover { isHovered = $0 }
         .contextMenu {
             Button("View Details") { onSelect() }
             Button("Start Chat") { onNewChat() }

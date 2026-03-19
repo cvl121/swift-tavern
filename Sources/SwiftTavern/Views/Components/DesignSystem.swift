@@ -22,7 +22,8 @@ enum DS {
         static let surface = Color(.windowBackgroundColor)
         static let surfaceSecondary = Color(.controlBackgroundColor)
         static let surfaceHover = Color.primary.opacity(0.05)
-        static let surfaceSelected = Color.accentColor.opacity(0.15)
+        static let surfaceSelected = Color.accentColor.opacity(0.12)
+        static let selectedStroke = Color.accentColor.opacity(0.25)
         static let border = Color(.separatorColor)
         static let borderSubtle = Color(.separatorColor).opacity(0.5)
         static let textPrimary = Color.primary
@@ -31,6 +32,7 @@ enum DS {
         static let destructive = Color.red
         static let success = Color.green
         static let warning = Color.orange
+        static let sidebarBackground = Color(.windowBackgroundColor).opacity(0.5)
     }
 
     // MARK: - Font
@@ -75,5 +77,49 @@ struct DetailHeaderView: View {
 
             Divider()
         }
+    }
+}
+
+// MARK: - Reusable View Modifiers
+
+/// Standard card background used across detail pages
+struct CardStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: DS.cornerMedium)
+                    .fill(Color(.controlBackgroundColor).opacity(0.5))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DS.cornerMedium)
+                    .stroke(DS.Colors.borderSubtle, lineWidth: 0.5)
+            )
+    }
+}
+
+extension View {
+    func cardStyle() -> some View {
+        modifier(CardStyle())
+    }
+}
+
+/// Pill-shaped toolbar button style for chat header actions
+struct ToolbarPillButtonStyle: ButtonStyle {
+    var isActive: Bool = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isActive
+                        ? Color.accentColor.opacity(0.12)
+                        : configuration.isPressed
+                            ? Color.primary.opacity(0.08)
+                            : Color.clear)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 6))
     }
 }

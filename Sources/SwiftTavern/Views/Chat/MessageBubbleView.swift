@@ -18,19 +18,13 @@ struct MessageBubbleView: View {
     var onToggleBookmark: (() -> Void)?
     var onFork: (() -> Void)?
     var chatStyle: ChatStyle?
-    /// Base directory for resolving image URLs
     var imageBasePath: URL?
-    /// How large images appear in the chat
     var imageDisplaySize: ImageDisplaySize = .medium
-    /// Whether to show text labels next to action buttons
     var showActionLabels: Bool = false
-
     var isFocused: Bool = false
+    var swipeInfo: SwipeInfo?
 
     @State private var isHovered = false
-
-    // Swipe support (greeting or response swipes)
-    var swipeInfo: SwipeInfo?
 
     struct SwipeInfo {
         let currentIndex: Int
@@ -42,99 +36,61 @@ struct MessageBubbleView: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 10) {
             if !message.isUser {
                 AvatarImageView(imageData: avatarData, name: message.name, size: 32)
             }
 
-            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
-                // Name and timestamp
-                HStack {
+            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 3) {
+                // Name + timestamp
+                HStack(spacing: 5) {
                     if message.isUser { Spacer() }
-
                     Text(message.name)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.secondary)
-
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(message.isUser ? .accentColor.opacity(0.7) : .secondary)
                     if message.isBookmarked {
                         Image(systemName: "star.fill")
-                            .font(.system(size: 10))
+                            .font(.system(size: 8))
                             .foregroundColor(.yellow)
                     }
-
                     if let date = message.sendDate.chatDate {
                         Text(date.relativeDisplayString)
                             .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.secondary.opacity(0.6))
                     }
                 }
 
-                // Message content or edit field
+                // Content
                 if isEditing {
-                    MessageEditField(
-                        text: $editText,
-                        onSave: onSaveEdit,
-                        onCancel: onCancelEdit
-                    )
+                    MessageEditField(text: $editText, onSave: onSaveEdit, onCancel: onCancelEdit)
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
                         MarkdownTextView(text: message.mes, chatStyle: chatStyle)
                             .font(.system(size: chatStyle?.fontSize ?? 13))
                             .textSelection(.enabled)
 
-                        // Generated image (loaded via cache to avoid re-reading from disk)
-                        if message.hasImage, let imageURL = message.imageURL,
-                           let basePath = imageBasePath {
+                        if message.hasImage, let imageURL = message.imageURL, let basePath = imageBasePath {
                             let imagePath = basePath.appendingPathComponent(imageURL)
-                            let cacheKey = imageURL
-                            if let nsImage = ImageCache.shared.image(for: cacheKey) ?? loadAndCacheImage(path: imagePath, key: cacheKey) {
+                            if let nsImage = ImageCache.shared.image(for: imageURL) ?? loadAndCacheImage(path: imagePath, key: imageURL) {
                                 Image(nsImage: nsImage)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
-                                    .frame(
-                                        maxWidth: imageDisplaySize.maxWidth,
-                                        maxHeight: imageDisplaySize.maxHeight
-                                    )
-                                    .cornerRadius(8)
+                                    .frame(maxWidth: imageDisplaySize.maxWidth, maxHeight: imageDisplaySize.maxHeight)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                         }
                     }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(message.isUser
-                                ? Color.accentColor.opacity(0.08)
-                                : Color(.controlBackgroundColor).opacity(0.5))
-                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(messageBubbleBackground)
 
-                    // Action buttons
-                    messageActionButtons
+                    // Action buttons (show on hover)
+                    actionButtons
                 }
 
-                // Swipe arrows (greeting or response swipes)
+                // Swipe controls
                 if let info = swipeInfo {
-                    HStack(spacing: 8) {
-                        Button(action: info.onSwipeLeft) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(!info.canSwipeLeft)
-                        .accessibilityLabel("Previous response")
-
-                        Text("\(info.currentIndex + 1)/\(info.totalCount)")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.secondary)
-
-                        Button(action: info.onSwipeRight) {
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(!info.canSwipeRight)
-                        .accessibilityLabel("Next response")
-                    }
-                    .padding(.top, 2)
+                    swipeControls(info)
                 }
             }
             .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
@@ -143,121 +99,125 @@ struct MessageBubbleView: View {
                 AvatarImageView(imageData: avatarData, name: message.name, size: 32)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(isFocused ? Color.accentColor.opacity(0.06) : Color.clear)
-        .overlay(
-            Rectangle()
-                .fill(Color(.separatorColor).opacity(0.3))
-                .frame(height: 0.5),
-            alignment: .bottom
-        )
-        .overlay(
-            isFocused ? RoundedRectangle(cornerRadius: 4).stroke(Color.accentColor.opacity(0.3), lineWidth: 1).padding(2) : nil
-        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(isFocused ? Color.accentColor.opacity(0.03) : Color.clear)
         .onHover { isHovered = $0 }
         .contentShape(Rectangle())
-        .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    // MARK: - Bubble Background
+
+    private var messageBubbleBackground: some View {
+        RoundedRectangle(cornerRadius: 14)
+            .fill(message.isUser
+                ? Color.accentColor.opacity(0.07)
+                : Color(.controlBackgroundColor).opacity(0.4))
     }
 
     // MARK: - Action Buttons
 
     @ViewBuilder
-    private var messageActionButtons: some View {
-        HStack(spacing: showActionLabels ? 6 : 4) {
-            actionButton("Copy", icon: "doc.on.doc", action: onCopy)
-            actionButton("Edit", icon: "pencil", action: onEdit)
-            actionButton(
+    private var actionButtons: some View {
+        HStack(spacing: showActionLabels ? 5 : 3) {
+            actionBtn("Copy", icon: "doc.on.doc", action: onCopy)
+            actionBtn("Edit", icon: "pencil", action: onEdit)
+            actionBtn(
                 message.isBookmarked ? "Unbookmark" : "Bookmark",
                 icon: message.isBookmarked ? "star.fill" : "star",
                 action: onToggleBookmark ?? {},
                 tint: message.isBookmarked ? .yellow : nil
             )
-
-            if let onFork {
-                actionButton("Fork", icon: "arrow.branch", action: onFork)
-            }
-
+            if let onFork { actionBtn("Fork", icon: "arrow.branch", action: onFork) }
             if let onRegenerate, !message.isUser {
-                actionButton("Regenerate", icon: "arrow.clockwise", action: onRegenerate)
+                actionBtn("Regenerate", icon: "arrow.clockwise", action: onRegenerate)
             }
-
-            if let onDeleteAndAfter {
-                actionButton("Delete After", icon: "scissors", action: onDeleteAndAfter)
-            }
-
-            actionButton("Delete", icon: "trash", action: onDelete, tint: .red)
+            if let onDeleteAndAfter { actionBtn("Delete After", icon: "scissors", action: onDeleteAndAfter) }
+            actionBtn("Delete", icon: "trash", action: onDelete, tint: .red)
         }
         .padding(.top, 2)
         .opacity(isHovered ? 1.0 : 0.0)
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .animation(.easeInOut(duration: 0.12), value: isHovered)
     }
 
-    /// Load a generated image from disk and cache it for future renders
-    private func loadAndCacheImage(path: URL, key: String) -> NSImage? {
-        guard let nsImage = NSImage(contentsOf: path) else { return nil }
-        ImageCache.shared.setImage(nsImage, for: key)
-        return nsImage
-    }
-
-    private func actionButton(_ label: String, icon: String, action: @escaping () -> Void, tint: Color? = nil) -> some View {
+    private func actionBtn(_ label: String, icon: String, action: @escaping () -> Void, tint: Color? = nil) -> some View {
         Button(action: action) {
             HStack(spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 11))
-                if showActionLabels {
-                    Text(label)
-                        .font(.system(size: 10))
-                }
+                Image(systemName: icon).font(.system(size: 10))
+                if showActionLabels { Text(label).font(.system(size: 10)) }
             }
             .foregroundColor(tint ?? .secondary)
-            .padding(.horizontal, showActionLabels ? 6 : 4)
+            .padding(.horizontal, showActionLabels ? 6 : 5)
             .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.primary.opacity(0.04))
-            )
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.04)))
+            .contentShape(RoundedRectangle(cornerRadius: 5))
         }
         .buttonStyle(.plain)
         .help(label)
         .accessibilityLabel(label)
     }
+
+    // MARK: - Swipe Controls
+
+    private func swipeControls(_ info: SwipeInfo) -> some View {
+        HStack(spacing: 10) {
+            Button(action: info.onSwipeLeft) {
+                Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.borderless).disabled(!info.canSwipeLeft)
+
+            Text("\(info.currentIndex + 1)/\(info.totalCount)")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary).monospacedDigit()
+
+            Button(action: info.onSwipeRight) {
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.borderless).disabled(!info.canSwipeRight)
+        }
+        .padding(.top, 2)
+    }
+
+    private func loadAndCacheImage(path: URL, key: String) -> NSImage? {
+        guard let nsImage = NSImage(contentsOf: path) else { return nil }
+        ImageCache.shared.setImage(nsImage, for: key)
+        return nsImage
+    }
 }
 
-/// Editing field extracted to its own view so its TextEditor state is independent
-/// of the LazyVStack recycling that causes hangs when scrolling during an edit.
+// MARK: - Message Edit Field
+
 private struct MessageEditField: View {
     @Binding var text: String
     let onSave: () -> Void
     let onCancel: () -> Void
-
     @State private var localText: String = ""
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             TextEditor(text: $localText)
                 .font(.system(size: 13))
-                .frame(minHeight: 100, maxHeight: 500)
+                .frame(minHeight: 80, maxHeight: 400)
                 .scrollContentBackground(.hidden)
-                .padding(8)
-                .background(Color(.controlBackgroundColor))
-                .cornerRadius(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor, lineWidth: 2))
+                .padding(10)
+                .background(Color(.controlBackgroundColor).opacity(0.6))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.accentColor.opacity(0.5), lineWidth: 1.5)
+                )
 
-            HStack {
+            HStack(spacing: 8) {
+                Spacer()
                 Button("Cancel", action: onCancel)
                     .controlSize(.small)
-
-                Button("Save") {
-                    text = localText
-                    onSave()
-                }
-                .controlSize(.small)
-                .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") { text = localText; onSave() }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
             }
         }
-        .onAppear {
-            localText = text
-        }
+        .onAppear { localText = text }
     }
 }

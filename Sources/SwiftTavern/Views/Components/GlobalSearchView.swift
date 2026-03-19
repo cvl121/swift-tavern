@@ -27,11 +27,11 @@ struct GlobalSearchView: View {
             HStack(spacing: 12) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                    .font(.system(size: 16))
+                    .font(.system(size: 15))
 
                 TextField("Search characters and messages...", text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 16))
+                    .font(.system(size: 15))
                     .focused($isSearchFieldFocused)
                     .onSubmit { performSearch() }
 
@@ -57,6 +57,7 @@ struct GlobalSearchView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
+            .background(.ultraThinMaterial)
 
             Divider()
 

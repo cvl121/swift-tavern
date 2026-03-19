@@ -6,23 +6,32 @@ struct CharacterDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 20) {
                 // Header
                 HStack(spacing: 16) {
                     AvatarImageView(imageData: entry.avatarData, name: entry.card.data.name, size: 80)
+                        .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
 
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text(entry.card.data.name)
-                            .font(.title)
+                            .font(.title.bold())
                         if !entry.card.data.creator.isEmpty {
                             Text("by \(entry.card.data.creator)")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
                         if !entry.card.data.tags.isEmpty {
-                            Text(entry.card.data.tags.joined(separator: ", "))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            HStack(spacing: 4) {
+                                ForEach(entry.card.data.tags.prefix(6), id: \.self) { tag in
+                                    Text(tag)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.accentColor.opacity(0.08))
+                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                }
+                            }
                         }
                     }
 
@@ -45,19 +54,27 @@ struct CharacterDetailView: View {
                     infoSection("Creator Notes", entry.card.data.creatorNotes)
                 }
             }
-            .padding(20)
+            .padding(24)
         }
     }
 
     @ViewBuilder
     private func infoSection(_ title: String, _ content: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.3)
             Text(content)
                 .font(.system(size: 13))
                 .textSelection(.enabled)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(.controlBackgroundColor).opacity(0.4))
+                )
         }
     }
 }

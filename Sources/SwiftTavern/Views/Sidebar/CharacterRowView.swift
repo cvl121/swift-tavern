@@ -6,10 +6,10 @@ struct CharacterRowView: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 0) {
             AvatarImageView(imageData: entry.avatarData, name: entry.card.data.name, size: 36)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 0) {
                 Text(entry.card.data.name)
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
@@ -24,7 +24,6 @@ struct CharacterRowView: View {
 
             Spacer()
         }
-        .padding(.vertical, 4)
         .padding(.horizontal, 8)
         .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
         .cornerRadius(6)

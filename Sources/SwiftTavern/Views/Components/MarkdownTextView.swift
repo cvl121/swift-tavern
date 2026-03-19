@@ -329,13 +329,28 @@ struct MarkdownTextView: View {
         let isCode: Bool
     }
 
+    /// Whether a character is an opening double-quote (ASCII or smart)
+    private static func isOpenQuote(_ c: Character) -> Bool {
+        c == "\"" || c == "\u{201C}" // " or left double quotation mark
+    }
+
+    /// Whether a character is a closing double-quote (ASCII or smart)
+    private static func isCloseQuote(_ c: Character) -> Bool {
+        c == "\"" || c == "\u{201D}" // " or right double quotation mark
+    }
+
+    /// Whether a character is any double-quote variant
+    private static func isAnyQuote(_ c: Character) -> Bool {
+        c == "\"" || c == "\u{201C}" || c == "\u{201D}"
+    }
+
     /// Parse raw text into styled segments by scanning markers directly.
     ///
     /// Text formatting rules:
     /// - `*...*` → italic + action color (asterisks hidden)
     /// - `**...**` → bold (asterisks hidden), keeps contextual color
     /// - `***...***` → bold + italic + action color (asterisks hidden)
-    /// - `"..."` → dialogue color (quotes visible)
+    /// - `"..."` / `\u{201C}...\u{201D}` → dialogue color (quotes visible)
     /// - `(...)` → thinking/OOC color (parens visible)
     /// - `` `...` `` → monospace code (backticks hidden)
     /// - Unclosed `*` → rest of text is action (greedy match)
@@ -360,8 +375,8 @@ struct MarkdownTextView: View {
                 i += 1
                 while i < n && chars[i] != "`" { i += 1 }
                 if i < n {
-                    isHidden[start] = true   // opening backtick
-                    isHidden[i] = true        // closing backtick
+                    isHidden[start] = true
+                    isHidden[i] = true
                     for j in (start + 1)..<i {
                         isCode[j] = true
                     }
@@ -380,7 +395,6 @@ struct MarkdownTextView: View {
             if isCode[i] || isHidden[i] { i += 1; continue }
 
             if chars[i] == "*" {
-                // Count consecutive asterisks
                 var count = 0
                 let start = i
                 while i < n && chars[i] == "*" && !isCode[i] {
@@ -388,7 +402,6 @@ struct MarkdownTextView: View {
                     i += 1
                 }
 
-                // Mark asterisks as hidden
                 for j in start..<(start + count) {
                     isHidden[j] = true
                 }
@@ -414,20 +427,45 @@ struct MarkdownTextView: View {
 
         // Pass 2: Quote and paren regions override color category
         // Priority: dialogue > thinking > action > narrative
+        // Supports ASCII quotes ("...") and smart/curly quotes (\u{201C}...\u{201D})
         i = 0
         while i < n {
             if isHidden[i] || isCode[i] { i += 1; continue }
 
-            // Detect "double-quoted dialogue"
-            if chars[i] == "\"" {
+            // Detect double-quoted dialogue (ASCII " or smart quotes " ")
+            if Self.isOpenQuote(chars[i]) {
+                let openChar = chars[i]
                 let start = i
                 i += 1
                 while i < n {
-                    if chars[i] == "\"" && !isHidden[i] && !isCode[i] { break }
+                    if !isHidden[i] && !isCode[i] {
+                        // Match: same ASCII quote closes itself, or right smart quote closes left
+                        if openChar == "\"" && chars[i] == "\"" { break }
+                        if openChar == "\u{201C}" && (chars[i] == "\u{201D}" || chars[i] == "\"") { break }
+                        // Also handle right smart quote used as opening (rare but possible)
+                        if openChar == "\u{201D}" && chars[i] == "\u{201D}" { break }
+                    }
                     i += 1
                 }
                 if i < n {
-                    // Mark entire quoted region including quotes as dialogue
+                    for j in start...i {
+                        if !isHidden[j] && !isCode[j] {
+                            category[j] = .dialogue
+                        }
+                    }
+                    i += 1
+                }
+                continue
+            }
+            // Also catch right smart quote as opening (e.g. copy-pasted text)
+            if chars[i] == "\u{201D}" {
+                let start = i
+                i += 1
+                while i < n {
+                    if !isHidden[i] && !isCode[i] && Self.isAnyQuote(chars[i]) { break }
+                    i += 1
+                }
+                if i < n {
                     for j in start...i {
                         if !isHidden[j] && !isCode[j] {
                             category[j] = .dialogue
@@ -557,8 +595,20 @@ struct MarkdownTextView: View {
                 chatStyle: .default
             )
             Divider()
+            // Smart/curly quotes: should render as dialogue color + italic
+            MarkdownTextView(
+                text: "*\u{201C}Hello there!\u{201D}* she said, leaning against the wall.",
+                chatStyle: .default
+            )
+            Divider()
             MarkdownTextView(
                 text: "*I wonder what she wants...* \"Oh, hey!\" He waves awkwardly. (OOC: great scene!)",
+                chatStyle: .default
+            )
+            Divider()
+            // Smart quotes without asterisks
+            MarkdownTextView(
+                text: "She said \u{201C}Hello there!\u{201D} and smiled.",
                 chatStyle: .default
             )
             Divider()

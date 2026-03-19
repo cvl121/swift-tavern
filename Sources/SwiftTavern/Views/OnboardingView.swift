@@ -33,11 +33,12 @@ struct OnboardingView: View {
                 Spacer()
 
                 // Page dots
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     ForEach(0..<totalPages, id: \.self) { page in
                         Circle()
-                            .fill(page == currentPage ? Color.accentColor : Color.secondary.opacity(0.3))
-                            .frame(width: 7, height: 7)
+                            .fill(page == currentPage ? Color.accentColor : Color.secondary.opacity(0.2))
+                            .frame(width: page == currentPage ? 8 : 6, height: page == currentPage ? 8 : 6)
+                            .animation(.spring(response: 0.3), value: currentPage)
                     }
                 }
 
@@ -45,7 +46,7 @@ struct OnboardingView: View {
 
                 if currentPage < totalPages - 1 {
                     Button("Next") {
-                        withAnimation { currentPage += 1 }
+                        withAnimation(.spring(response: 0.35)) { currentPage += 1 }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)

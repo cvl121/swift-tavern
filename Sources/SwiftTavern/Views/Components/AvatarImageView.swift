@@ -29,7 +29,7 @@ struct AvatarImageView: View {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [Color(.systemGray).opacity(0.4), Color(.systemGray).opacity(0.6)],
+                            colors: [Color.accentColor.opacity(0.25), Color.accentColor.opacity(0.15)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -37,8 +37,8 @@ struct AvatarImageView: View {
                 Image(systemName: "person.fill")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundColor(.white.opacity(0.9))
-                    .padding(size * 0.22)
+                    .foregroundColor(.accentColor.opacity(0.5))
+                    .padding(size * 0.24)
             }
         }
         .frame(width: size, height: size)

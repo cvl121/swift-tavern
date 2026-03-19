@@ -17,9 +17,11 @@ struct ChatHistoryPickerView: View {
                 Text("Chat History")
                     .font(.headline)
                 Spacer()
-                Button("New Chat", action: onNew)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                Button(action: onNew) {
+                    Label("New Chat", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
             }
             .padding()
 
@@ -29,7 +31,7 @@ struct ChatHistoryPickerView: View {
                 VStack(spacing: 12) {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 32))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.secondary.opacity(0.6))
                     Text("No chat history")
                         .font(.headline)
                         .foregroundColor(.secondary)
@@ -43,7 +45,7 @@ struct ChatHistoryPickerView: View {
                 List {
                     ForEach(chatList, id: \.filename) { chat in
                         HStack {
-                            VStack(alignment: .leading) {
+                            VStack(alignment: .leading, spacing: 3) {
                                 Text(chat.filename)
                                     .font(.system(size: 12))
                                     .lineLimit(1)
@@ -57,8 +59,9 @@ struct ChatHistoryPickerView: View {
                             Spacer()
 
                             if chat.filename == currentFilename {
-                                Image(systemName: "checkmark")
+                                Image(systemName: "checkmark.circle.fill")
                                     .foregroundColor(.accentColor)
+                                    .font(.system(size: 14))
                             }
                         }
                         .contentShape(Rectangle())
@@ -70,7 +73,7 @@ struct ChatHistoryPickerView: View {
                         }
                         .background(
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(hoveredChat == chat.filename ? Color.primary.opacity(0.06) : Color.clear)
+                                .fill(hoveredChat == chat.filename ? Color.primary.opacity(0.05) : Color.clear)
                         )
                         .contextMenu {
                             Button("Load Chat") {
@@ -94,6 +97,6 @@ struct ChatHistoryPickerView: View {
             }
             .padding()
         }
-        .frame(width: 400, height: 350)
+        .frame(width: 420, height: 380)
     }
 }

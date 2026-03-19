@@ -7,12 +7,15 @@ struct StreamingIndicatorView: View {
     let avatarData: Data?
     var chatStyle: ChatStyle?
 
+    @State private var dotPhase = 0
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            AvatarImageView(imageData: avatarData, name: characterName, size: 32)
+            AvatarImageView(imageData: avatarData, name: characterName, size: 34)
+                .shadow(color: .black.opacity(0.06), radius: 2, y: 1)
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
+                HStack(spacing: 6) {
                     Text(characterName)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.secondary)
@@ -26,22 +29,35 @@ struct StreamingIndicatorView: View {
                     MarkdownTextView(text: text, chatStyle: chatStyle)
                         .font(.system(size: chatStyle?.fontSize ?? 13))
                         .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(.controlBackgroundColor).opacity(0.45))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color(.separatorColor).opacity(0.2), lineWidth: 0.5)
+                        )
                 } else {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         ForEach(0..<3) { i in
                             Circle()
-                                .fill(Color.secondary)
+                                .fill(Color.secondary.opacity(dotPhase == i ? 0.8 : 0.3))
                                 .frame(width: 6, height: 6)
-                                .opacity(0.5)
+                                .animation(.easeInOut(duration: 0.4).delay(Double(i) * 0.15), value: dotPhase)
                         }
                     }
-                    .padding(10)
+                    .padding(12)
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
+                            dotPhase = 2
+                        }
+                    }
                 }
             }
 
             Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
     }
 }

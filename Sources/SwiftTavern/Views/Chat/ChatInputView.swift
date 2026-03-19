@@ -39,7 +39,7 @@ struct ChatInputView: View {
             }
 
             // Input + buttons
-            HStack(alignment: .bottom, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 10) {
                 // Native text input — survives container resize without recreation
                 NativeTextInput(
                     text: $text,
@@ -51,7 +51,11 @@ struct ChatInputView: View {
                 )
                 .frame(height: localHeight)
                 .background(Color(.controlBackgroundColor))
-                .cornerRadius(8)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color(.separatorColor).opacity(0.4), lineWidth: 0.5)
+                )
                 .accessibilityLabel("Message input")
 
                 actionButtons
@@ -76,15 +80,11 @@ struct ChatInputView: View {
         ZStack {
             Rectangle()
                 .fill(Color.clear)
-                .frame(height: 12)
+                .frame(height: 10)
 
-            HStack(spacing: 3) {
-                ForEach(0..<3, id: \.self) { _ in
-                    Circle()
-                        .frame(width: 5, height: 5)
-                }
-            }
-            .foregroundColor(.secondary.opacity(0.5))
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(Color.secondary.opacity(0.25))
+                .frame(width: 36, height: 3)
         }
         .contentShape(Rectangle())
         .cursor(.resizeUpDown)
@@ -121,7 +121,7 @@ struct ChatInputView: View {
                 Spacer()
                 Text(model)
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.secondary.opacity(0.7))
                     .lineLimit(1)
             }
         }
@@ -134,8 +134,10 @@ struct ChatInputView: View {
             if imageGenEnabled {
                 Button(action: { onGenerateImage?() }) {
                     Image(systemName: isGeneratingImage ? "hourglass" : "photo")
-                        .font(.system(size: 16))
+                        .font(.system(size: 15))
                         .foregroundColor(isGeneratingImage ? .secondary : .accentColor)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(isGeneratingImage || isGenerating)
@@ -150,8 +152,9 @@ struct ChatInputView: View {
                 }
             }) {
                 Image(systemName: isGenerating ? "stop.circle.fill" : "arrow.up.circle.fill")
-                    .font(.system(size: 24))
+                    .font(.system(size: 26))
                     .foregroundColor(isGenerating ? .red : .accentColor)
+                    .shadow(color: isGenerating ? .red.opacity(0.2) : .accentColor.opacity(0.15), radius: 3, y: 1)
             }
             .buttonStyle(.plain)
             .help(isGenerating ? "Stop generating" : (sendOnEnter ? "Send message (Enter)" : "Send message (Cmd+Return)"))

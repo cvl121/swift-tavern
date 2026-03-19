@@ -159,19 +159,25 @@ struct CharacterEditorView: View {
 
     @ViewBuilder
     private func fieldSection(_ title: String, text: Binding<String>, multiline: Bool = false, helpText: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.3)
 
             if multiline {
                 TextEditor(text: text)
                     .font(.system(size: 13))
                     .frame(minHeight: 60, maxHeight: 150)
                     .scrollContentBackground(.hidden)
-                    .padding(6)
-                    .background(Color(.controlBackgroundColor))
-                    .cornerRadius(6)
+                    .padding(8)
+                    .background(Color(.controlBackgroundColor).opacity(0.6))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(.separatorColor).opacity(0.3), lineWidth: 0.5)
+                    )
             } else {
                 TextField("", text: text)
                     .textFieldStyle(.roundedBorder)
@@ -180,7 +186,7 @@ struct CharacterEditorView: View {
             if let help = helpText {
                 Text(help)
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.secondary.opacity(0.8))
             }
         }
     }

@@ -56,17 +56,31 @@ final class GeminiService: LLMService {
     private func buildRequestBody(messages: [LLMMessage], config: APIConfiguration) -> [String: Any] {
         var contents: [[String: Any]] = []
         var systemInstruction: String?
+        var lateSystemMessages: [String] = []
+        var hasSeenConversation = false
 
         for msg in messages {
             if msg.role == .system {
-                systemInstruction = (systemInstruction ?? "") + msg.content + "\n"
+                if hasSeenConversation {
+                    lateSystemMessages.append(msg.content)
+                } else {
+                    systemInstruction = (systemInstruction ?? "") + msg.content + "\n"
+                }
             } else {
+                hasSeenConversation = true
                 let role = msg.role == .user ? "user" : "model"
                 contents.append([
                     "role": role,
                     "parts": [["text": msg.content]],
                 ])
             }
+        }
+
+        // Append late system messages (reminders, post-history instructions) to the
+        // system instruction so they reinforce at the end of context
+        if !lateSystemMessages.isEmpty {
+            let lateContent = lateSystemMessages.joined(separator: "\n\n")
+            systemInstruction = (systemInstruction ?? "") + "\n\n---\n\n" + lateContent
         }
 
         if contents.isEmpty {

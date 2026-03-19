@@ -44,6 +44,7 @@ struct MainView: View {
                     groupChatVM: groupChatVM
                 )
                 .frame(width: sidebarWidth)
+                .background(.ultraThinMaterial)
                 .transition(.move(edge: .leading))
 
                 // Resizable divider handle
@@ -78,17 +79,19 @@ struct MainView: View {
 
             // Detail content
             VStack(spacing: 0) {
-                // Slim top bar with sidebar toggle
+                // Slim top bar with sidebar toggle and global search
                 HStack(spacing: 8) {
                     Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
                             sidebarVisible.toggle()
                             appState.settings.sidebarVisible = sidebarVisible
                         }
                     }) {
                         Image(systemName: "sidebar.left")
-                            .font(.system(size: 13))
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.secondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help("Toggle Sidebar")
@@ -98,14 +101,17 @@ struct MainView: View {
 
                     Button(action: { showGlobalSearch = true }) {
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 13))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.secondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help("Global Search (Cmd+Shift+F)")
                     .padding(.trailing, 8)
                 }
-                .frame(height: 28)
+                .frame(height: 32)
+                .background(Color(.windowBackgroundColor).opacity(0.8))
 
                 detailView
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -114,7 +120,7 @@ struct MainView: View {
         }
         .frame(minWidth: minSidebarWidth + minContentWidth + 1, minHeight: 600)
         .applyUIScale(appState.settings.uiScale)
-        .animation(.easeInOut(duration: 0.2), value: sidebarVisible)
+        .animation(.spring(response: 0.25, dampingFraction: 0.9), value: sidebarVisible)
         .clipped()
         .overlay(alignment: .bottom) {
             if let toast = appState.toastMessage {
@@ -122,13 +128,12 @@ struct MainView: View {
                     Image(systemName: appState.toastIsError ? "xmark.circle.fill" : "checkmark.circle.fill")
                         .foregroundColor(appState.toastIsError ? .red : .green)
                     Text(toast)
-                        .font(.system(size: 13))
+                        .font(.system(size: 13, weight: .medium))
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .background(.regularMaterial)
-                .cornerRadius(10)
-                .shadow(radius: 4)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                .shadow(color: .black.opacity(0.1), radius: 8, y: 2)
                 .padding(.bottom, 20)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -268,27 +273,43 @@ struct MainView: View {
     }
 
     private var welcomeView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
+            Spacer()
+
             Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 60))
-                .foregroundColor(.secondary)
-            Text("SwiftTavern")
-                .font(.largeTitle)
-                .foregroundColor(.secondary)
-            Text("Select a character to start chatting, or create a new one.")
-                .foregroundColor(.secondary)
+                .font(.system(size: 52))
+                .foregroundStyle(.linearGradient(
+                    colors: [.accentColor.opacity(0.6), .accentColor.opacity(0.3)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+
+            VStack(spacing: 6) {
+                Text("SwiftTavern")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary.opacity(0.8))
+                Text("Select a character to start chatting, or create a new one.")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+            }
 
             HStack(spacing: 12) {
-                Button("New Character") {
-                    appState.selectedSidebarItem = .newCharacter
+                Button(action: { appState.selectedSidebarItem = .newCharacter }) {
+                    Label("New Character", systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
 
-                Button("Import Character") {
-                    characterListVM.showingImporter = true
+                Button(action: { characterListVM.showingImporter = true }) {
+                    Label("Import", systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
             }
+            .padding(.top, 4)
+
+            Spacer()
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

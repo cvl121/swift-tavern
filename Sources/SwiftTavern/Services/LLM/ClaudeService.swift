@@ -71,19 +71,38 @@ final class ClaudeService: LLMService {
         request.setValue(config.apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
 
-        // Separate system message from conversation messages
+        // Separate system messages from conversation messages.
+        // The first system message is the main prompt. System messages that appear
+        // AFTER conversation messages (e.g. reminder prompts, post-history instructions)
+        // are appended to the system prompt so they stay in context for Claude's API
+        // which only supports a single top-level system field.
         var systemPrompt: String?
         var conversationMessages: [[String: String]] = []
+        var lateSystemMessages: [String] = []
+        var hasSeenConversation = false
 
         for msg in messages {
             if msg.role == .system {
-                systemPrompt = (systemPrompt ?? "") + msg.content + "\n"
+                if hasSeenConversation {
+                    // System message after conversation — keep separate for appending later
+                    lateSystemMessages.append(msg.content)
+                } else {
+                    systemPrompt = (systemPrompt ?? "") + msg.content + "\n"
+                }
             } else {
+                hasSeenConversation = true
                 conversationMessages.append([
                     "role": msg.role.rawValue,
                     "content": msg.content,
                 ])
             }
+        }
+
+        // Append late system messages (reminders, post-history instructions) to the
+        // system prompt with clear labeling so they reinforce at the end of context
+        if !lateSystemMessages.isEmpty {
+            let lateContent = lateSystemMessages.joined(separator: "\n\n")
+            systemPrompt = (systemPrompt ?? "") + "\n\n---\n\n" + lateContent
         }
 
         // Ensure messages alternate user/assistant and start with user
