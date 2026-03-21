@@ -79,10 +79,22 @@ final class AppState {
         self.settings = .default
 
         // Ensure directories exist
-        try? dirManager.ensureDirectoriesExist()
+        do {
+            try dirManager.ensureDirectoriesExist()
+        } catch {
+            // Defer toast until after init completes
+            DispatchQueue.main.async { [weak self] in
+                self?.showToast("Failed to create data directories: \(error.localizedDescription)", isError: true)
+            }
+        }
 
-        // Load settings
+        // Load settings (with corruption detection)
         self.settings = settingsStorage.load()
+        if settingsStorage.didResetDueToCorruption {
+            DispatchQueue.main.async { [weak self] in
+                self?.showToast("Settings file was corrupted and has been reset to defaults. A copy was saved as settings.corrupted.json", isError: true)
+            }
+        }
     }
 
     /// Load all data from disk asynchronously
@@ -90,9 +102,32 @@ final class AppState {
         isLoading = true
 
         Task.detached(priority: .userInitiated) { [self] in
-            let chars = (try? characterStorage.loadAll()) ?? []
-            let grps = (try? groupStorage.loadAll()) ?? []
-            let worlds = (try? worldInfoStorage.loadAll()) ?? []
+            var loadErrors: [String] = []
+
+            let chars: [CharacterEntry]
+            do {
+                chars = try characterStorage.loadAll()
+            } catch {
+                chars = []
+                loadErrors.append("characters: \(error.localizedDescription)")
+            }
+
+            let grps: [CharacterGroup]
+            do {
+                grps = try groupStorage.loadAll()
+            } catch {
+                grps = []
+                loadErrors.append("groups: \(error.localizedDescription)")
+            }
+
+            let worlds: [WorldInfo]
+            do {
+                worlds = try worldInfoStorage.loadAll()
+            } catch {
+                worlds = []
+                loadErrors.append("world info: \(error.localizedDescription)")
+            }
+
             let pers = personaStorage.loadAll()
             let pres = presetStorage.loadAll()
 
@@ -103,6 +138,10 @@ final class AppState {
                 personas = pers
                 presets = pres
                 isLoading = false
+
+                if !loadErrors.isEmpty {
+                    showToast("Failed to load: \(loadErrors.joined(separator: ", "))", isError: true)
+                }
 
                 // Create default Assistant character if no characters exist
                 if characters.isEmpty {
@@ -124,16 +163,31 @@ final class AppState {
 
             // Restore the specific chat that was active for this character
             let charName = entry.card.data.name
-            if let activeChatFilename = settings.activeChatPerCharacter[activeCharFilename],
-               let session = try? chatStorage.loadChat(characterName: charName, filename: activeChatFilename) {
-                currentChat = session
-            } else if let chats = try? chatStorage.listChats(for: charName),
-                      let mostRecent = chats.first {
-                currentChat = try? chatStorage.loadChat(
+            if let activeChatFilename = settings.activeChatPerCharacter[activeCharFilename] {
+                do {
+                    currentChat = try chatStorage.loadChat(characterName: charName, filename: activeChatFilename)
+                } catch {
+                    // Active chat failed to load, try most recent
+                    loadMostRecentChat(for: charName)
+                }
+            } else {
+                loadMostRecentChat(for: charName)
+            }
+        }
+    }
+
+    /// Try to load the most recent chat for a character
+    private func loadMostRecentChat(for charName: String) {
+        do {
+            let chats = try chatStorage.listChats(for: charName)
+            if let mostRecent = chats.first {
+                currentChat = try chatStorage.loadChat(
                     characterName: charName,
                     filename: mostRecent.filename
                 )
             }
+        } catch {
+            showToast("Failed to load chat for \(charName): \(error.localizedDescription)", isError: true)
         }
     }
 
@@ -149,7 +203,11 @@ final class AppState {
         settingsSaveTask?.cancel()
         let task = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            try? self.settingsStorage.save(self.settings)
+            do {
+                try self.settingsStorage.save(self.settings)
+            } catch {
+                self.showToast("Failed to save settings: \(error.localizedDescription)", isError: true)
+            }
         }
         settingsSaveTask = task
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: task)
@@ -159,8 +217,12 @@ final class AppState {
     func saveSettings() {
         settingsSaveTask?.cancel()
         isSaving = true
-        try? settingsStorage.save(settings)
-        lastSaveTime = Date()
+        do {
+            try settingsStorage.save(settings)
+            lastSaveTime = Date()
+        } catch {
+            showToast("Failed to save settings: \(error.localizedDescription)", isError: true)
+        }
         isSaving = false
     }
 
@@ -257,14 +319,22 @@ final class AppState {
         chatMetadataCache.removeValue(forKey: key)
     }
 
+    /// Callback invoked before switching characters, allowing active generation to be cancelled
+    var onCharacterWillChange: (() -> Void)?
+    /// Callback invoked after switching characters, allowing draft restoration
+    var onCharacterDidChange: (() -> Void)?
+
     /// Track active character for session restoration
     func setActiveCharacter(_ entry: CharacterEntry?) {
+        // Cancel any active generation before switching
+        onCharacterWillChange?()
         selectedCharacter = entry
         settings.activeCharacter = entry?.filename
         // Clear unread when switching to a character
         if let filename = entry?.filename {
             markRead(characterFilename: filename)
         }
+        onCharacterDidChange?()
     }
 
     /// Mark a character's conversation as having an unread response

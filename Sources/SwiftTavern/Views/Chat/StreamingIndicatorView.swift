@@ -59,5 +59,8 @@ struct StreamingIndicatorView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(characterName) is typing")
+        .accessibilityValue(text.isEmpty ? "Waiting for response" : text.prefix(100).description)
     }
 }

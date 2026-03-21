@@ -278,6 +278,19 @@ struct ImageGenerationSettingsView: View {
                     viewModel.saveConfiguration()
                 }
             }
+
+            if viewModel.imageGenSettings.triggerMode != .manual && viewModel.imageGenAPIKey.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                        .font(.system(size: 12))
+                    Text("Auto-generation is enabled but no image API key is configured. Images will fail to generate until a key is set above.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.orange)
+                }
+                .padding(8)
+                .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+            }
         }
     }
 

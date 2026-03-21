@@ -94,26 +94,31 @@ final class GroupChatViewModel {
             return
         }
 
-        // Determine next speaker based on activation strategy
+        // Determine next speaker based on manual override or activation strategy
         let activeMembers = group.members.filter { !group.disabledMembers.contains($0) }
         guard !activeMembers.isEmpty else { return }
 
         let nextSpeaker: String
-        switch group.activationStrategy {
-        case .roundRobin:
-            let lastCharMessage = messages.last { !$0.isUser }
-            if let lastSpeaker = lastCharMessage?.name,
-               let lastIdx = activeMembers.firstIndex(where: { filename in
-                   appState.characters.first { $0.filename == filename }?.card.data.name == lastSpeaker
-               }) {
-                nextSpeaker = activeMembers[(lastIdx + 1) % activeMembers.count]
-            } else {
+        if let manual = manualNextSpeaker, activeMembers.contains(manual) {
+            nextSpeaker = manual
+            manualNextSpeaker = nil // Clear override after use
+        } else {
+            switch group.activationStrategy {
+            case .roundRobin:
+                let lastCharMessage = messages.last { !$0.isUser }
+                if let lastSpeaker = lastCharMessage?.name,
+                   let lastIdx = activeMembers.firstIndex(where: { filename in
+                       appState.characters.first { $0.filename == filename }?.card.data.name == lastSpeaker
+                   }) {
+                    nextSpeaker = activeMembers[(lastIdx + 1) % activeMembers.count]
+                } else {
+                    nextSpeaker = activeMembers[0]
+                }
+            case .random:
+                nextSpeaker = activeMembers.randomElement() ?? activeMembers[0]
+            default:
                 nextSpeaker = activeMembers[0]
             }
-        case .random:
-            nextSpeaker = activeMembers.randomElement() ?? activeMembers[0]
-        default:
-            nextSpeaker = activeMembers[0]
         }
 
         guard let speakerEntry = appState.characters.first(where: { $0.filename == nextSpeaker }) else { return }
@@ -159,6 +164,40 @@ final class GroupChatViewModel {
                 }
             }
         }
+    }
+
+    /// Manual speaker override — when set, this character speaks next instead of using strategy
+    var manualNextSpeaker: String?
+
+    /// Predict the next speaker based on group activation strategy
+    var predictedNextSpeaker: CharacterEntry? {
+        guard let appState, let group = appState.selectedGroup else { return nil }
+        let activeMembers = group.members.filter { !group.disabledMembers.contains($0) }
+        guard !activeMembers.isEmpty else { return nil }
+
+        // If manual override is set, use it
+        if let manual = manualNextSpeaker {
+            return appState.characters.first { $0.filename == manual }
+        }
+
+        let nextFilename: String
+        switch group.activationStrategy {
+        case .roundRobin:
+            let lastCharMessage = messages.last { !$0.isUser }
+            if let lastSpeaker = lastCharMessage?.name,
+               let lastIdx = activeMembers.firstIndex(where: { filename in
+                   appState.characters.first { $0.filename == filename }?.card.data.name == lastSpeaker
+               }) {
+                nextFilename = activeMembers[(lastIdx + 1) % activeMembers.count]
+            } else {
+                nextFilename = activeMembers[0]
+            }
+        case .random:
+            nextFilename = activeMembers[0] // Can't predict random, show first
+        default:
+            nextFilename = activeMembers[0]
+        }
+        return appState.characters.first { $0.filename == nextFilename }
     }
 
     var editingMessageIndex: Int?

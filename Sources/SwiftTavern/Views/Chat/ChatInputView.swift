@@ -142,6 +142,7 @@ struct ChatInputView: View {
                 .buttonStyle(.plain)
                 .disabled(isGeneratingImage || isGenerating)
                 .help("Generate an image of the current scene")
+                .accessibilityLabel(isGeneratingImage ? "Generating image" : "Generate image")
             }
 
             Button(action: {
@@ -158,6 +159,7 @@ struct ChatInputView: View {
             }
             .buttonStyle(.plain)
             .help(isGenerating ? "Stop generating" : (sendOnEnter ? "Send message (Enter)" : "Send message (Cmd+Return)"))
+            .accessibilityLabel(isGenerating ? "Stop generating" : "Send message")
             .animation(.easeInOut(duration: 0.15), value: isGenerating)
         }
     }

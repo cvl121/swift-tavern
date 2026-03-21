@@ -24,6 +24,17 @@ struct SwiftTavernApp: App {
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             }
 
+            CommandGroup(replacing: .help) {
+                Button("Keyboard Shortcuts") {
+                    NotificationCenter.default.post(name: .showKeyboardShortcuts, object: nil)
+                }
+                .keyboardShortcut("/", modifiers: .command)
+
+                Button("Show Onboarding") {
+                    NotificationCenter.default.post(name: .showOnboarding, object: nil)
+                }
+            }
+
             CommandMenu("Chat") {
                 Button("Search Messages") {
                     NotificationCenter.default.post(name: .searchMessages, object: nil)
@@ -64,4 +75,5 @@ extension Notification.Name {
     static let regenerateResponse = Notification.Name("com.swifttavern.regenerateResponse")
     static let globalSearch = Notification.Name("com.swifttavern.globalSearch")
     static let showOnboarding = Notification.Name("com.swifttavern.showOnboarding")
+    static let showKeyboardShortcuts = Notification.Name("com.swifttavern.showKeyboardShortcuts")
 }

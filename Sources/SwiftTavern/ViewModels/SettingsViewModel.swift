@@ -48,6 +48,8 @@ final class SettingsViewModel {
     // Loading indicators for bulk operations
     var isImporting = false
     var isExporting = false
+    var importProgress: String = ""
+    private var importTask: Task<Void, Never>?
 
     // Toggles
     var advancedMode: Bool
@@ -460,6 +462,14 @@ final class SettingsViewModel {
         importFromSillyTavernDirectory(url)
     }
 
+    func cancelImport() {
+        importTask?.cancel()
+        importTask = nil
+        isImporting = false
+        importProgress = ""
+        showToastMessage("Import cancelled", isError: false)
+    }
+
     private func importFromSillyTavernDirectory(_ providedURL: URL) {
         guard let appState else { return }
         isImporting = true
@@ -558,6 +568,7 @@ final class SettingsViewModel {
         }
 
         // Import characters
+        importProgress = "Importing characters..."
         for dir in charDirs where fm.fileExists(atPath: dir.path) {
             let (count, errs) = importCharactersFromDirectory(dir)
             importedChars += count
@@ -565,11 +576,13 @@ final class SettingsViewModel {
         }
 
         // Import chats
+        importProgress = "Importing chats..."
         for dir in chatDirs where fm.fileExists(atPath: dir.path) {
             importedChats += importChatsFromDirectory(dir)
         }
 
         // Import world info from directories
+        importProgress = "Importing world lore..."
         for dir in worldDirs where fm.fileExists(atPath: dir.path) {
             let (count, errs) = importWorldsFromDirectory(dir)
             importedWorlds += count
@@ -590,6 +603,7 @@ final class SettingsViewModel {
         }
 
         // Import presets
+        importProgress = "Importing presets..."
         for dir in presetDirs where fm.fileExists(atPath: dir.path) {
             importedPresets += importPresetsFromDirectory(dir)
         }

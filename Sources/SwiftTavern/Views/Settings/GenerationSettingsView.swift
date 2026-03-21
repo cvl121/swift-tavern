@@ -60,16 +60,19 @@ struct GenerationSettingsView: View {
             }
 
             // Temperature
-            parameterSlider("Temperature", value: $params.temperature, range: 0...2, step: 0.01, decimals: 2)
+            parameterSlider("Temperature", value: $params.temperature, range: 0...2, step: 0.01, decimals: 2,
+                            hint: "Controls randomness: 0 = deterministic, 1 = balanced, 2 = very creative")
 
             // Top P
-            parameterSlider("Top P", value: $params.topP, range: 0...1, step: 0.01, decimals: 2)
+            parameterSlider("Top P", value: $params.topP, range: 0...1, step: 0.01, decimals: 2,
+                            hint: "Nucleus sampling: only considers tokens within this cumulative probability (1.0 = disabled)")
 
             // Top K
             intParameterSlider("Top K", value: Binding(
                 get: { params.topK },
                 set: { params.topK = $0 }
-            ), range: 0...500, step: 1)
+            ), range: 0...500, step: 1,
+               hint: "Only considers the top K most likely tokens (0 = disabled)")
 
             // Min P
             parameterSlider("Min P", value: $params.minP, range: 0...1, step: 0.01, decimals: 2,
@@ -96,13 +99,16 @@ struct GenerationSettingsView: View {
                 .foregroundColor(.secondary)
 
             // Frequency Penalty
-            parameterSlider("Frequency Penalty", value: $params.frequencyPenalty, range: -2...2, step: 0.01, decimals: 2)
+            parameterSlider("Frequency Penalty", value: $params.frequencyPenalty, range: -2...2, step: 0.01, decimals: 2,
+                            hint: "Penalizes tokens proportional to how often they appear (reduces word repetition)")
 
             // Presence Penalty
-            parameterSlider("Presence Penalty", value: $params.presencePenalty, range: -2...2, step: 0.01, decimals: 2)
+            parameterSlider("Presence Penalty", value: $params.presencePenalty, range: -2...2, step: 0.01, decimals: 2,
+                            hint: "Penalizes any token that has appeared at all (encourages new topics)")
 
             // Repetition Penalty
-            parameterSlider("Repetition Penalty", value: $params.repetitionPenalty, range: 1...2, step: 0.01, decimals: 2)
+            parameterSlider("Repetition Penalty", value: $params.repetitionPenalty, range: 1...2, step: 0.01, decimals: 2,
+                            hint: "Multiplier penalty for repeated tokens (1.0 = disabled, higher = less repetition)")
 
             // Encoder Repetition Penalty
             parameterSlider("Encoder Rep. Penalty", value: $params.encoderRepetitionPenalty, range: 0.8...1.5, step: 0.01, decimals: 2,
@@ -147,9 +153,12 @@ struct GenerationSettingsView: View {
                 .font(.system(size: 12))
 
             if params.dynaTempEnabled {
-                parameterSlider("Min Temp", value: $params.dynaTempLow, range: 0...2, step: 0.01, decimals: 2)
-                parameterSlider("Max Temp", value: $params.dynaTempHigh, range: 0...2, step: 0.01, decimals: 2)
-                parameterSlider("Exponent", value: $params.dynaTempExponent, range: 0...5, step: 0.1, decimals: 1)
+                parameterSlider("Min Temp", value: $params.dynaTempLow, range: 0...2, step: 0.01, decimals: 2,
+                                hint: "Lower bound of temperature range")
+                parameterSlider("Max Temp", value: $params.dynaTempHigh, range: 0...2, step: 0.01, decimals: 2,
+                                hint: "Upper bound of temperature range")
+                parameterSlider("Exponent", value: $params.dynaTempExponent, range: 0...5, step: 0.1, decimals: 1,
+                                hint: "Controls how temperature scales with token entropy")
             }
 
             Divider()
@@ -171,7 +180,8 @@ struct GenerationSettingsView: View {
                             hint: "Quadratic smoothing (0 = disabled)")
 
             // Smoothing Curve
-            parameterSlider("Smoothing Curve", value: $params.smoothingCurve, range: 0...10, step: 0.1, decimals: 1)
+            parameterSlider("Smoothing Curve", value: $params.smoothingCurve, range: 0...10, step: 0.1, decimals: 1,
+                            hint: "Shape of the smoothing distribution curve")
 
             // Seed
             VStack(alignment: .leading) {

@@ -12,6 +12,7 @@ struct MainView: View {
     @State private var groupChatVM: GroupChatViewModel
     @State private var showOnboarding = false
     @State private var showGlobalSearch = false
+    @State private var showKeyboardShortcuts = false
     @State private var sidebarVisible = true
     @State private var sidebarWidth: CGFloat = 250
     @State private var dragStartWidth: CGFloat = 250
@@ -189,6 +190,12 @@ struct MainView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .showOnboarding)) { _ in
             showOnboarding = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showKeyboardShortcuts)) { _ in
+            showKeyboardShortcuts = true
+        }
+        .sheet(isPresented: $showKeyboardShortcuts) {
+            KeyboardShortcutsView(onDismiss: { showKeyboardShortcuts = false })
         }
     }
 

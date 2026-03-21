@@ -1143,9 +1143,12 @@ struct DataImportExportView: View {
                         if viewModel.isImporting {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("Importing...")
+                            Text(viewModel.importProgress.isEmpty ? "Importing..." : viewModel.importProgress)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                            Button("Cancel") { viewModel.cancelImport() }
+                                .controlSize(.small)
+                                .buttonStyle(.bordered)
                         }
                     }
                 }

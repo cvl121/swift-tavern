@@ -70,8 +70,11 @@ struct SidebarView: View {
             allowsMultipleSelection: false
         ) { result in
             if case .success(let urls) = result, let url = urls.first {
-                characterListVM.importCharacter(from: url)
+                characterListVM.previewImport(from: url)
             }
+        }
+        .sheet(isPresented: $characterListVM.showingImportPreview) {
+            CharacterImportPreviewView(characterListVM: characterListVM)
         }
         // File exporter
         .fileExporter(

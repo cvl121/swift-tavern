@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 final class ChatViewModel {
     var inputText = ""
     var isGenerating = false
+    var isLoadingChat = false
     var streamingText = ""
     var errorMessage: String?
     var showingChatPicker = false
@@ -103,10 +104,77 @@ final class ChatViewModel {
 
     init(appState: AppState) {
         self.appState = appState
+        // Save draft and cancel active generation when character is about to change
+        appState.onCharacterWillChange = { [weak self] in
+            self?.saveDraft()
+            self?.cancelGenerationSilently()
+        }
+        // Restore draft when character finishes switching
+        appState.onCharacterDidChange = { [weak self] in
+            self?.restoreDraft()
+        }
+    }
+
+    /// Cancel active generation without showing stop options (used on character switch)
+    private func cancelGenerationSilently() {
+        guard isGenerating else { return }
+        generationTask?.cancel()
+        generationTask = nil
+        streamBuffer = ""
+        streamingText = ""
+        isGenerating = false
+    }
+
+    // MARK: - Input Draft Persistence
+
+    /// Per-character input drafts (maps character filename → unsent text)
+    private var inputDrafts: [String: String] = [:]
+
+    /// Save current input text as draft for the active character
+    func saveDraft() {
+        guard let filename = appState?.selectedCharacter?.filename else { return }
+        let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            inputDrafts.removeValue(forKey: filename)
+        } else {
+            inputDrafts[filename] = inputText
+        }
+    }
+
+    /// Restore draft for the active character
+    func restoreDraft() {
+        guard let filename = appState?.selectedCharacter?.filename else { return }
+        inputText = inputDrafts[filename] ?? ""
     }
 
     var messages: [ChatMessage] {
         appState?.currentChat?.messages ?? []
+    }
+
+    /// Whether there are older messages not shown due to the display limit
+    var hasHiddenMessages: Bool {
+        guard let appState else { return false }
+        let allCount = appState.currentChat?.messages.count ?? 0
+        let limit = appState.settings.chatDisplayLimit
+        return limit > 0 && allCount > limit
+    }
+
+    /// Number of hidden (earlier) messages
+    var hiddenMessageCount: Int {
+        guard let appState else { return 0 }
+        let allCount = appState.currentChat?.messages.count ?? 0
+        let limit = appState.settings.chatDisplayLimit
+        guard limit > 0 && allCount > limit else { return 0 }
+        return allCount - limit
+    }
+
+    /// Temporarily increase the display limit to show more messages
+    func loadMoreMessages() {
+        guard let appState else { return }
+        let current = appState.settings.chatDisplayLimit
+        guard current > 0 else { return }
+        // Show 100 more messages (or all if fewer remain)
+        appState.settings.chatDisplayLimit = current + 100
     }
 
     /// Messages to display, respecting the configured display limit
@@ -443,9 +511,10 @@ final class ChatViewModel {
         imageGenerationError = nil
 
         Task {
+            var generatedPrompt = ""
             do {
                 // Step 1: Get a scene description from the main LLM
-                let scenePrompt = try await generateScenePrompt(
+                generatedPrompt = try await generateScenePrompt(
                     character: character,
                     appState: appState,
                     imgSettings: imgSettings
@@ -456,7 +525,7 @@ final class ChatViewModel {
                 let refImage: Data? = (imgSettings.useReferenceImage && imgSettings.provider.supportsReferenceImage)
                     ? character.avatarData : nil
                 let imageData = try await service.generateImage(
-                    prompt: scenePrompt,
+                    prompt: generatedPrompt,
                     negativePrompt: nil,
                     settings: imgSettings,
                     apiKey: apiKey,
@@ -473,22 +542,30 @@ final class ChatViewModel {
 
                 // Step 4: Create image message and append to chat
                 await MainActor.run {
+                    guard let filename else {
+                        isGeneratingImage = false
+                        return
+                    }
                     let imageMessage = ChatMessage(
                         name: charName,
                         isUser: false,
                         mes: "*A scene unfolds...*",
                         imageURL: filename,
-                        imagePrompt: scenePrompt
+                        imagePrompt: generatedPrompt
                     )
                     appState.currentChat?.messages.append(imageMessage)
                     rewriteCurrentChat()
                     messagesSinceLastImage = 0
                     isGeneratingImage = false
 
-                    appState.devLogger.log(.info, "[ImageGen] Image generated | Prompt: \(scenePrompt.prefix(100))...")
+                    appState.devLogger.log(.info, "[ImageGen] Image generated | Prompt: \(generatedPrompt.prefix(100))...")
                 }
             } catch {
                 await MainActor.run {
+                    // Preserve the generated prompt so user can retry via the editor
+                    if !generatedPrompt.isEmpty {
+                        imageEditorPrompt = generatedPrompt
+                    }
                     imageGenerationError = error.localizedDescription
                     isGeneratingImage = false
                     appState.devLogger.log(.error, "[ImageGen] Error: \(error.localizedDescription)")
@@ -580,6 +657,10 @@ final class ChatViewModel {
                 )
 
                 await MainActor.run {
+                    guard let filename else {
+                        isGeneratingImage = false
+                        return
+                    }
                     let imageMessage = ChatMessage(
                         name: charName,
                         isUser: false,
@@ -628,14 +709,19 @@ final class ChatViewModel {
     }
 
     /// Save generated image data to disk
-    private func saveImageToDisk(imageData: Data, characterName: String, appState: AppState) -> String {
+    private func saveImageToDisk(imageData: Data, characterName: String, appState: AppState) -> String? {
         let timestamp = Int(Date().timeIntervalSince1970)
         let uuid = UUID().uuidString.prefix(8)
         let filename = "\(timestamp)_\(uuid).png"
         let dir = appState.generatedImagesDirectory(for: characterName)
         let fileURL = dir.appendingPathComponent(filename)
 
-        try? imageData.write(to: fileURL)
+        do {
+            try imageData.write(to: fileURL)
+        } catch {
+            appState.showToast("Failed to save generated image: \(error.localizedDescription)", isError: true)
+            return nil
+        }
 
         // Return relative path: CharacterName/filename
         return "\(characterName.sanitizedFilename())/\(filename)"
@@ -878,42 +964,60 @@ final class ChatViewModel {
 
     func newChat() {
         guard let appState, let character = appState.selectedCharacter else { return }
-        appState.currentChat = try? appState.chatStorage.createChat(
-            characterName: character.card.data.name,
-            userName: appState.effectiveUserName(for: character),
-            firstMessage: character.card.data.firstMes
-        )
-        greetingSwipeIndex = 0
-        appState.saveActiveChatFilename()
-        appState.showToast("New chat created")
+        do {
+            appState.currentChat = try appState.chatStorage.createChat(
+                characterName: character.card.data.name,
+                userName: appState.effectiveUserName(for: character),
+                firstMessage: character.card.data.firstMes
+            )
+            greetingSwipeIndex = 0
+            appState.saveActiveChatFilename()
+            appState.showToast("New chat created")
+        } catch {
+            errorMessage = "Failed to create chat: \(error.localizedDescription)"
+        }
     }
 
     func loadChat(filename: String) {
         guard let appState, let character = appState.selectedCharacter else { return }
-        appState.currentChat = try? appState.chatStorage.loadChat(
-            characterName: character.card.data.name,
-            filename: filename
-        )
-        syncGreetingSwipeIndex()
-        appState.saveActiveChatFilename()
+        isLoadingChat = true
+        do {
+            appState.currentChat = try appState.chatStorage.loadChat(
+                characterName: character.card.data.name,
+                filename: filename
+            )
+            syncGreetingSwipeIndex()
+            appState.saveActiveChatFilename()
+        } catch {
+            errorMessage = "Failed to load chat: \(error.localizedDescription)"
+        }
+        isLoadingChat = false
     }
 
     func deleteCurrentChat() {
         guard let appState, let character = appState.selectedCharacter,
               let chat = appState.currentChat else { return }
 
-        try? appState.chatStorage.deleteChat(
-            characterName: character.card.data.name,
-            filename: chat.filename
-        )
-
-        if let chats = try? appState.chatStorage.listChats(for: character.card.data.name),
-           let mostRecent = chats.first {
-            appState.currentChat = try? appState.chatStorage.loadChat(
+        do {
+            try appState.chatStorage.deleteChat(
                 characterName: character.card.data.name,
-                filename: mostRecent.filename
+                filename: chat.filename
             )
-        } else {
+        } catch {
+            appState.showToast("Failed to delete chat: \(error.localizedDescription)", isError: true)
+        }
+
+        do {
+            let chats = try appState.chatStorage.listChats(for: character.card.data.name)
+            if let mostRecent = chats.first {
+                appState.currentChat = try appState.chatStorage.loadChat(
+                    characterName: character.card.data.name,
+                    filename: mostRecent.filename
+                )
+            } else {
+                newChat()
+            }
+        } catch {
             newChat()
         }
     }
@@ -1171,8 +1275,12 @@ final class ChatViewModel {
         panel.nameFieldStringValue = "\(character.card.data.name) - chat.md"
         panel.begin { response in
             if response == .OK, let url = panel.url {
-                try? markdown.write(to: url, atomically: true, encoding: .utf8)
-                appState.showToast("Chat exported as Markdown")
+                do {
+                    try markdown.write(to: url, atomically: true, encoding: .utf8)
+                    appState.showToast("Chat exported as Markdown")
+                } catch {
+                    appState.showToast("Failed to export: \(error.localizedDescription)", isError: true)
+                }
             }
         }
     }

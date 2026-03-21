@@ -13,6 +13,12 @@ final class CharacterListViewModel {
     var exportFilename: String?
     var errorMessage: String?
 
+    // Import preview
+    var showingImportPreview = false
+    var pendingImportURL: URL?
+    var pendingImportCard: TavernCardV2?
+    var pendingImportAvatarData: Data?
+
     var filteredCharacters: [CharacterEntry] {
         guard let appState else { return [] }
         if searchText.isEmpty {
@@ -48,14 +54,63 @@ final class CharacterListViewModel {
             showDeleteConfirmation = false
             return
         }
-        try? appState.characterStorage.delete(filename: entry.filename)
-        appState.characters.removeAll { $0.filename == entry.filename }
-        if appState.selectedCharacter?.filename == entry.filename {
-            appState.setActiveCharacter(nil)
-            appState.currentChat = nil
+        do {
+            try appState.characterStorage.delete(filename: entry.filename)
+            appState.characters.removeAll { $0.filename == entry.filename }
+            if appState.selectedCharacter?.filename == entry.filename {
+                appState.setActiveCharacter(nil)
+                appState.currentChat = nil
+            }
+        } catch {
+            appState.showToast("Failed to delete character: \(error.localizedDescription)", isError: true)
         }
         showDeleteConfirmation = false
         pendingDeleteEntry = nil
+    }
+
+    /// Preview a character before importing — parses the file and shows a preview sheet
+    func previewImport(from url: URL) {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let data = try Data(contentsOf: url)
+
+            if url.pathExtension.lowercased() == "png" {
+                // Try to parse as PNG with embedded card
+                let card = try CharacterCardParser.parse(from: data)
+                pendingImportCard = card
+                pendingImportAvatarData = data
+            } else {
+                // JSON import — try to decode as TavernCardV2
+                let card = try JSONDecoder().decode(TavernCardV2.self, from: data)
+                pendingImportCard = card
+                pendingImportAvatarData = nil
+            }
+            pendingImportURL = url
+            showingImportPreview = true
+        } catch {
+            // If preview parsing fails, fall through to direct import
+            importCharacter(from: url)
+        }
+    }
+
+    /// Confirm import after preview
+    func confirmImport() {
+        guard let url = pendingImportURL else {
+            dismissImportPreview()
+            return
+        }
+        importCharacter(from: url)
+        dismissImportPreview()
+    }
+
+    /// Dismiss the import preview without importing
+    func dismissImportPreview() {
+        showingImportPreview = false
+        pendingImportURL = nil
+        pendingImportCard = nil
+        pendingImportAvatarData = nil
     }
 
     func importCharacter(from url: URL) {
@@ -103,12 +158,26 @@ final class CharacterListViewModel {
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let baseURL = panel.url else { return }
         let fm = FileManager.default
+        var exported = 0
+        var failed = 0
         for entry in appState.characters {
             let src = appState.directoryManager.charactersDirectory.appendingPathComponent(entry.filename)
             let dst = baseURL.appendingPathComponent(entry.filename)
             if !fm.fileExists(atPath: dst.path) {
-                try? fm.copyItem(at: src, to: dst)
+                do {
+                    try fm.copyItem(at: src, to: dst)
+                    exported += 1
+                } catch {
+                    failed += 1
+                }
+            } else {
+                exported += 1 // already exists
             }
+        }
+        if failed > 0 {
+            appState.showToast("Exported \(exported) characters, \(failed) failed", isError: true)
+        } else {
+            appState.showToast("Exported \(exported) characters")
         }
     }
 
@@ -121,21 +190,41 @@ final class CharacterListViewModel {
         let charName = entry.card.data.name
 
         // Try to restore the previously active chat for this character
-        if let activeChatFilename = appState.settings.activeChatPerCharacter[entry.filename],
-           let session = try? appState.chatStorage.loadChat(characterName: charName, filename: activeChatFilename) {
-            appState.currentChat = session
-        } else if let chats = try? appState.chatStorage.listChats(for: charName),
-                  let mostRecent = chats.first {
-            appState.currentChat = try? appState.chatStorage.loadChat(
-                characterName: charName,
-                filename: mostRecent.filename
-            )
-        } else {
-            appState.currentChat = try? appState.chatStorage.createChat(
-                characterName: charName,
-                userName: appState.settings.userName,
-                firstMessage: entry.card.data.firstMes
-            )
+        if let activeChatFilename = appState.settings.activeChatPerCharacter[entry.filename] {
+            do {
+                appState.currentChat = try appState.chatStorage.loadChat(characterName: charName, filename: activeChatFilename)
+                appState.saveActiveChatFilename()
+                return
+            } catch {
+                // Active chat failed, fall through to most recent
+            }
+        }
+
+        do {
+            let chats = try appState.chatStorage.listChats(for: charName)
+            if let mostRecent = chats.first {
+                appState.currentChat = try appState.chatStorage.loadChat(
+                    characterName: charName,
+                    filename: mostRecent.filename
+                )
+            } else {
+                appState.currentChat = try appState.chatStorage.createChat(
+                    characterName: charName,
+                    userName: appState.settings.userName,
+                    firstMessage: entry.card.data.firstMes
+                )
+            }
+        } catch {
+            // Last resort: create a new chat
+            do {
+                appState.currentChat = try appState.chatStorage.createChat(
+                    characterName: charName,
+                    userName: appState.settings.userName,
+                    firstMessage: entry.card.data.firstMes
+                )
+            } catch {
+                appState.showToast("Failed to load or create chat: \(error.localizedDescription)", isError: true)
+            }
         }
         appState.saveActiveChatFilename()
     }
@@ -146,11 +235,15 @@ final class CharacterListViewModel {
         appState.selectedSidebarItem = .character(entry.filename)
         appState.selectedGroup = nil
 
-        appState.currentChat = try? appState.chatStorage.createChat(
-            characterName: entry.card.data.name,
-            userName: appState.settings.userName,
-            firstMessage: entry.card.data.firstMes
-        )
+        do {
+            appState.currentChat = try appState.chatStorage.createChat(
+                characterName: entry.card.data.name,
+                userName: appState.settings.userName,
+                firstMessage: entry.card.data.firstMes
+            )
+        } catch {
+            appState.showToast("Failed to create chat: \(error.localizedDescription)", isError: true)
+        }
         appState.saveActiveChatFilename()
     }
 }

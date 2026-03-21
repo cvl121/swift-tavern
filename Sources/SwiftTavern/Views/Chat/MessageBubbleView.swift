@@ -23,6 +23,7 @@ struct MessageBubbleView: View {
     var showActionLabels: Bool = false
     var isFocused: Bool = false
     var swipeInfo: SwipeInfo?
+    var searchHighlight: String?
 
     @State private var isHovered = false
 
@@ -101,9 +102,22 @@ struct MessageBubbleView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(isFocused ? Color.accentColor.opacity(0.03) : Color.clear)
+        .background(
+            searchHighlight != nil
+                ? Color.yellow.opacity(0.08)
+                : isFocused ? Color.accentColor.opacity(0.03) : Color.clear
+        )
+        .overlay(alignment: .leading) {
+            if searchHighlight != nil {
+                Rectangle()
+                    .fill(Color.yellow.opacity(0.6))
+                    .frame(width: 3)
+            }
+        }
         .onHover { isHovered = $0 }
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(message.name): \(message.mes.prefix(200))")
     }
 
     // MARK: - Bubble Background
@@ -165,15 +179,18 @@ struct MessageBubbleView: View {
                 Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
             }
             .buttonStyle(.borderless).disabled(!info.canSwipeLeft)
+            .accessibilityLabel("Previous response")
 
             Text("\(info.currentIndex + 1)/\(info.totalCount)")
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundColor(.secondary).monospacedDigit()
+                .accessibilityLabel("Response \(info.currentIndex + 1) of \(info.totalCount)")
 
             Button(action: info.onSwipeRight) {
                 Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
             }
             .buttonStyle(.borderless).disabled(!info.canSwipeRight)
+            .accessibilityLabel("Next response")
         }
         .padding(.top, 2)
     }

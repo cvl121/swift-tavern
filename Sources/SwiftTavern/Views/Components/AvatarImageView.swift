@@ -43,6 +43,7 @@ struct AvatarImageView: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
+        .accessibilityLabel("\(name) avatar")
     }
 
     /// Load image, rejecting minimal placeholder PNGs (1x1 pixel images created for characters without avatars)

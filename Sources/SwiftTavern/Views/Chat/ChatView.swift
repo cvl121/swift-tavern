@@ -108,6 +108,30 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    if chatVM.isLoadingChat {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Loading chat...").font(.system(size: 12)).foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
+                    }
+
+                    if chatVM.hasHiddenMessages {
+                        Button(action: { chatVM.loadMoreMessages() }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.up.circle")
+                                    .font(.system(size: 12))
+                                Text("Load \(min(100, chatVM.hiddenMessageCount)) earlier messages (\(chatVM.hiddenMessageCount) hidden)")
+                                    .font(.system(size: 11))
+                            }
+                            .foregroundColor(.accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                    }
+
                     ForEach(chatVM.indexedDisplayMessages, id: \.element.stableIdentity) { offset, message in
                         messageBubble(index: offset, message: message)
                             .id(message.stableIdentity)
@@ -229,11 +253,20 @@ struct ChatView: View {
 
         if let imgError = chatVM.imageGenerationError {
             StatusBanner(icon: "photo.badge.exclamationmark", color: .orange) {
-                HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(imgError).font(.system(size: 12)).foregroundColor(.secondary).lineLimit(2)
-                    Spacer()
-                    Button("Dismiss") { chatVM.imageGenerationError = nil }
-                        .controlSize(.small).buttonStyle(.bordered)
+                    HStack {
+                        Spacer()
+                        Button("Dismiss") { chatVM.imageGenerationError = nil }
+                            .controlSize(.small).buttonStyle(.bordered)
+                        if !chatVM.imageEditorPrompt.isEmpty {
+                            Button("Retry with Prompt") {
+                                chatVM.imageGenerationError = nil
+                                chatVM.showingImagePromptEditor = true
+                            }
+                            .controlSize(.small).buttonStyle(.borderedProminent)
+                        }
+                    }
                 }
             }
         }
@@ -431,6 +464,15 @@ struct ChatView: View {
                     .onTapGesture { appState.selectedSidebarItem = .characterInfo(character.filename) }
                     .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
                     .help("View character info")
+
+                Button(action: { appState.selectedSidebarItem = .characterInfo(character.filename) }) {
+                    Image(systemName: "pencil.circle")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Edit Character")
+                .accessibilityLabel("Edit character settings")
             }
 
             if !chatVM.messages.isEmpty {
@@ -669,6 +711,9 @@ struct ChatView: View {
             return nil
         }()
 
+        let searchQuery = chatVM.showingInChatSearch && chatVM.inChatSearchResults.contains(index)
+            ? chatVM.inChatSearchQuery : nil
+
         MessageBubbleView(
             message: truncatedMessage, avatarData: avatarData, index: index,
             isEditing: chatVM.editingMessageIndex == index,
@@ -687,7 +732,8 @@ struct ChatView: View {
             imageDisplaySize: appState.settings.imageGenerationSettings.displaySize,
             showActionLabels: appState.settings.showChatButtonLabels,
             isFocused: chatVM.focusedMessageIndex == index,
-            swipeInfo: swipe
+            swipeInfo: swipe,
+            searchHighlight: searchQuery
         )
     }
 }
@@ -703,6 +749,7 @@ private struct StatusBanner<Content: View>: View {
         HStack(spacing: 8) {
             if let icon {
                 Image(systemName: icon).foregroundColor(color)
+                    .accessibilityHidden(true)
             }
             content
         }
@@ -711,6 +758,7 @@ private struct StatusBanner<Content: View>: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(color.opacity(0.12), lineWidth: 0.5))
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
     }
 }
 
