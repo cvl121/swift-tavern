@@ -16,8 +16,8 @@ SwiftTavern was built to change that. The goal is simple: a fast, smooth, native
 - **Chat history** -- all conversations are saved automatically with per-character history, switchable from the conversation toolbar
 - **Message editing** -- edit, delete, or regenerate any message; undo with Cmd+Z (up to 10 steps)
 - **Unified search** -- search within the current conversation or across all chats for a character from a single search bar
-- **Bookmarks & forks** -- bookmark important messages and fork conversations from any point
-- **Group chats** -- chat with multiple characters at once using different turn-taking strategies (natural, round robin, random, manual)
+- **Chat presets** -- save and load named generation parameter presets; import/export SillyTavern preset format
+- **Reminder prompt** -- optional instruction reminder injected near the end of the conversation to reinforce style, formatting, or tense that models tend to forget in long chats
 
 ### Characters & World Building
 - **TavernCardV2 compatible** -- import and export character cards (PNG or JSON) that work with the wider Tavern ecosystem
@@ -25,13 +25,20 @@ SwiftTavern was built to change that. The goal is simple: a fast, smooth, native
 - **Character books** -- per-character lore entries with keyword triggers, position control, and priority
 - **World Info** -- standalone world lore books with keyword-triggered entries, assignable globally or per-character
 - **Personas** -- create and switch between user identities with custom names, descriptions, and avatars
+- **Per-character personas** -- assign a specific persona to individual characters so the right identity is used automatically
 
 ### AI Providers
-- **Six providers** -- OpenRouter, OpenAI, Claude (Anthropic), Google Gemini, NovelAI, and Ollama (local)
-- **Bring your own API key** -- keys are stored locally and never sent anywhere except to your chosen provider
-- **Live model lists** -- OpenRouter models fetched and searchable in real time
-- **Connection testing** -- verify your API key and endpoint before chatting
-- **Configurable generation** -- temperature, top-p, top-k, penalties, max tokens, stop sequences, and streaming toggle
+
+SwiftTavern is designed primarily around **OpenRouter**, which gives you access to hundreds of models through a single API key and is the recommended starting point. That said, the app supports several other text-based providers if you prefer to use them directly:
+
+| Provider | What you need | Notes |
+|----------|--------------|-------|
+| [OpenRouter](https://openrouter.ai) | API key | **Recommended.** Access to many models, live searchable model list, single key. |
+| [OpenAI](https://platform.openai.com) | API key | Direct access to GPT models. |
+| [Anthropic Claude](https://console.anthropic.com) | API key | Direct access to Claude models. |
+| [Google Gemini](https://aistudio.google.com) | API key | Direct access to Gemini models. |
+| [NovelAI](https://novelai.net) | API key | Specialized for creative/fiction writing. |
+| [Ollama](https://ollama.ai) | Local install | Run models locally, no API key needed. |
 
 ### Customization
 - **Chat text styling** -- customize colors for dialogue (quoted text), actions (italic/emote), and narrative text with live preview
@@ -42,11 +49,29 @@ SwiftTavern was built to change that. The goal is simple: a fast, smooth, native
 - **Light & dark mode** -- adapts to your system appearance with theme-aware chat colors
 - **Resizable sidebar** -- drag to resize, persisted across sessions
 - **Persistent input height** -- chat input field remembers its size across navigation
+- **Configurable generation** -- temperature, top-p, top-k, penalties, max tokens, stop sequences, streaming toggle, and advanced sampling (minP, topA, typicalP, TFS, Mirostat, dynamic temperature)
 
 ### Data & Import
 - **SillyTavern import** -- bring over your existing characters, chats, world info, presets, and personas
 - **Export options** -- export chats as JSONL or Markdown, export characters as PNG with embedded card data
 - **Local storage** -- all data stored in `~/Library/Application Support/SwiftTavern/`, nothing in the cloud
+- **Pinned characters** -- pin frequently-used characters to the top of the conversation list
+
+### Developer Tools
+- **Developer mode** -- enable a live log viewer for API requests, responses, and errors to help debug provider issues
+
+## Experimental Features
+
+The following features are available behind the **Experimental Features** toggle in Settings. They are still under active development and may not work as expected:
+
+| Feature | Description |
+|---------|-------------|
+| **Group Chats** | Chat with multiple characters at once using different turn-taking strategies (natural, round robin, random, manual). Groups appear in the sidebar conversations list. |
+| **Image Generation** | Generate images within conversations using AI image models (DALL-E, Stability AI, OpenRouter, NovelAI). Two-step pipeline: LLM generates a visual prompt from chat context, then an image service creates the image. Supports manual, automatic (every N messages), and LLM-triggered modes. |
+| **Regex Scripts** | Apply regex find-and-replace rules to input or output text. Useful for formatting, censoring, or transforming messages. Includes a built-in rule editor with per-rule enable/disable. |
+| **Chat Branching** | Fork conversations at any point to explore different directions. Branches are accessible via the context menu on each message. |
+| **Message Drag Reorder** | Drag and drop messages to reorder them within a conversation. |
+| **Keyboard Message Navigation** | Use arrow keys to navigate between messages and quickly select them for editing or other actions. |
 
 ## Requirements
 
@@ -62,17 +87,6 @@ SwiftTavern was built to change that. The goal is simple: a fast, smooth, native
 3. **Import or create a character** -- import a TavernCardV2 PNG/JSON file, drag a character file onto the sidebar, or create a new character from scratch.
 
 4. **Start chatting** -- select a character from the sidebar and send a message.
-
-## Supported Providers
-
-| Provider | What you need |
-|----------|--------------|
-| [OpenRouter](https://openrouter.ai) | API key (access to many models) |
-| [OpenAI](https://platform.openai.com) | API key |
-| [Anthropic Claude](https://console.anthropic.com) | API key |
-| [Google Gemini](https://aistudio.google.com) | API key |
-| [NovelAI](https://novelai.net) | API key |
-| [Ollama](https://ollama.ai) | Local install (no API key needed) |
 
 ## Keyboard Shortcuts
 
