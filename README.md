@@ -1,4 +1,4 @@
-![](https://github.com/cvl121/swift-tavern/blob/main/Screenshot%202026-03-30%20at%2015.18.55.png)
+![](Resources/Screenshot.png)
 
 # SwiftTavern
 
