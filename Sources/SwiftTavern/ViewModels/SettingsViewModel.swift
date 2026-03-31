@@ -89,8 +89,8 @@ final class SettingsViewModel {
     var toastMessage = ""
     var toastIsError = false
 
-    // Live OpenRouter models
-    var openRouterModels: [String] = []
+    // Live-fetched models per provider
+    var fetchedModels: [APIType: [String]] = [:]
     var isLoadingModels = false
 
     private weak var appState: AppState?
@@ -136,16 +136,14 @@ final class SettingsViewModel {
         // Load presets
         self.activePresetName = appState.activePresetName
 
-        // Fetch live models if OpenRouter is selected
-        if selectedAPI == .openrouter {
-            fetchOpenRouterModels()
-        }
+        // Fetch live models for the selected provider
+        fetchModels(for: selectedAPI)
     }
 
     /// The active model list for the current provider
     private var currentModels: [String] {
-        if selectedAPI == .openrouter && !openRouterModels.isEmpty {
-            return openRouterModels
+        if let fetched = fetchedModels[selectedAPI], !fetched.isEmpty {
+            return fetched
         }
         return selectedAPI.defaultModels
     }
@@ -226,41 +224,133 @@ final class SettingsViewModel {
         modelSearchText = ""
         connectionTestResult = nil
 
-        if apiType == .openrouter {
-            fetchOpenRouterModels()
-        }
+        fetchModels(for: apiType)
 
         appState.saveSettings()
     }
 
-    // MARK: - OpenRouter Model Fetching
+    // MARK: - Model Fetching
 
-    func fetchOpenRouterModels() {
+    /// Whether the given provider supports live model fetching
+    static func supportsModelFetching(_ api: APIType) -> Bool {
+        switch api {
+        case .openrouter, .openai, .claude, .gemini, .ollama: return true
+        case .novelai: return false
+        }
+    }
+
+    func refreshModels() {
+        fetchedModels[selectedAPI] = []
+        isLoadingModels = false
+        fetchModels(for: selectedAPI)
+    }
+
+    func fetchModels(for apiType: APIType) {
         guard !isLoadingModels else { return }
+        guard SettingsViewModel.supportsModelFetching(apiType) else { return }
         isLoadingModels = true
+
+        let currentAPIKey = appState?.settings.apiKeys[apiType.rawValue] ?? apiKey
+        let currentBaseURL = baseURL
 
         Task {
             do {
-                let url = URL(string: "https://openrouter.ai/api/v1/models")!
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 10
-                let (data, _) = try await URLSession.shared.data(for: request)
-
-                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let models = json["data"] as? [[String: Any]] {
-                    let modelIds = models.compactMap { $0["id"] as? String }.sorted()
-                    await MainActor.run {
-                        self.openRouterModels = modelIds
-                        self.isLoadingModels = false
-                    }
-                } else {
-                    await MainActor.run { self.isLoadingModels = false }
+                let models = try await Self.fetchModelList(for: apiType, apiKey: currentAPIKey, baseURL: currentBaseURL)
+                await MainActor.run {
+                    self.fetchedModels[apiType] = models
+                    self.isLoadingModels = false
                 }
             } catch {
-                // Fall back to static list silently
                 await MainActor.run { self.isLoadingModels = false }
             }
         }
+    }
+
+    private static func fetchModelList(for apiType: APIType, apiKey: String, baseURL: String) async throws -> [String] {
+        switch apiType {
+        case .openrouter:
+            return try await fetchOpenRouterModels()
+        case .openai:
+            return try await fetchOpenAIModels(apiKey: apiKey, baseURL: baseURL)
+        case .claude:
+            return try await fetchClaudeModels(apiKey: apiKey, baseURL: baseURL)
+        case .gemini:
+            return try await fetchGeminiModels(apiKey: apiKey, baseURL: baseURL)
+        case .ollama:
+            return try await fetchOllamaModels(baseURL: baseURL)
+        case .novelai:
+            return []
+        }
+    }
+
+    private static func fetchOpenRouterModels() async throws -> [String] {
+        let url = URL(string: "https://openrouter.ai/api/v1/models")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        let (data, _) = try await URLSession.shared.data(for: request)
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = json["data"] as? [[String: Any]] else { return [] }
+        return models.compactMap { $0["id"] as? String }.sorted()
+    }
+
+    private static func fetchOpenAIModels(apiKey: String, baseURL: String) async throws -> [String] {
+        let base = baseURL.isEmpty ? "https://api.openai.com" : baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let url = URL(string: "\(base)/v1/models")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await URLSession.shared.data(for: request)
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = json["data"] as? [[String: Any]] else { return [] }
+        return models.compactMap { $0["id"] as? String }
+            .filter { !$0.contains("embedding") && !$0.contains("tts") && !$0.contains("whisper") && !$0.contains("dall-e") && !$0.contains("moderation") }
+            .sorted()
+    }
+
+    private static func fetchClaudeModels(apiKey: String, baseURL: String) async throws -> [String] {
+        let base = baseURL.isEmpty ? "https://api.anthropic.com" : baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let url = URL(string: "\(base)/v1/models")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        let (data, _) = try await URLSession.shared.data(for: request)
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = json["data"] as? [[String: Any]] else { return [] }
+        return models.compactMap { $0["id"] as? String }.sorted()
+    }
+
+    private static func fetchGeminiModels(apiKey: String, baseURL: String) async throws -> [String] {
+        let base = baseURL.isEmpty ? "https://generativelanguage.googleapis.com" : baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let url = URL(string: "\(base)/v1beta/models?key=\(apiKey)")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        let (data, _) = try await URLSession.shared.data(for: request)
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = json["models"] as? [[String: Any]] else { return [] }
+        return models.compactMap { model -> String? in
+            guard let name = model["name"] as? String else { return nil }
+            // API returns "models/gemini-2.0-flash" — strip the prefix
+            return name.hasPrefix("models/") ? String(name.dropFirst(7)) : name
+        }
+        .filter { $0.contains("gemini") }
+        .sorted()
+    }
+
+    private static func fetchOllamaModels(baseURL: String) async throws -> [String] {
+        let base = baseURL.isEmpty ? "http://localhost:11434" : baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let url = URL(string: "\(base)/api/tags")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+        let (data, _) = try await URLSession.shared.data(for: request)
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = json["models"] as? [[String: Any]] else { return [] }
+        return models.compactMap { $0["name"] as? String }.sorted()
     }
 
     func saveAPIKey() {

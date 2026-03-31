@@ -62,13 +62,28 @@ struct APISettingsView: View {
 
             // Model selection
             VStack(alignment: .leading, spacing: 4) {
-                Text("Model")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.secondary)
+                HStack(spacing: 8) {
+                    Text("Model")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+                    if viewModel.isLoadingModels {
+                        ProgressView()
+                            .controlSize(.mini)
+                    }
+                    if SettingsViewModel.supportsModelFetching(viewModel.selectedAPI) {
+                        Button(action: { viewModel.refreshModels() }) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11))
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(viewModel.isLoadingModels)
+                        .help("Refresh model list")
+                    }
+                }
 
                 HStack {
                     Picker("Model", selection: $viewModel.model) {
-                        ForEach(viewModel.selectedAPI.defaultModels, id: \.self) { model in
+                        ForEach(viewModel.filteredModels, id: \.self) { model in
                             Text(model).tag(model)
                         }
                     }

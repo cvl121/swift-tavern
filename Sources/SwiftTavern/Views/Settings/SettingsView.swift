@@ -190,6 +190,17 @@ struct SettingsView: View {
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
+                    if SettingsViewModel.supportsModelFetching(viewModel.selectedAPI) {
+                        Button(action: {
+                            viewModel.refreshModels()
+                        }) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11))
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(viewModel.isLoadingModels)
+                        .help("Refresh model list")
+                    }
                 }
 
                 VStack(spacing: 4) {
