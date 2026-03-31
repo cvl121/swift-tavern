@@ -11,7 +11,7 @@ struct SidebarView: View {
     @State private var pendingDeleteGroup: CharacterGroup?
     @State private var showConversationDeleteConfirmation = false
     @State private var pendingDeleteConversationEntry: CharacterEntry?
-    @State private var pendingDeleteMessageCount: Int = 0
+    @State private var pendingDeleteChatCount: Int = 0
     @State private var chatDateCache: [String: Date] = [:]
     @State private var hoveredCharacter: String?
     @State private var hoveredGroup: String?
@@ -102,10 +102,10 @@ struct SidebarView: View {
                 pendingDeleteConversationEntry = nil
             }
             Button("Delete", role: .destructive) {
-                deleteCurrentConversation()
+                deleteAllConversations()
             }
         } message: {
-            Text("Are you sure you want to delete the current conversation with \"\(pendingDeleteConversationEntry?.card.data.name ?? "")\"\(pendingDeleteMessageCount > 0 ? " (\(pendingDeleteMessageCount) messages)" : "")? This cannot be undone.")
+            Text("Are you sure you want to delete all conversations with \"\(pendingDeleteConversationEntry?.card.data.name ?? "")\"\(pendingDeleteChatCount > 0 ? " (\(pendingDeleteChatCount) \(pendingDeleteChatCount == 1 ? "conversation" : "conversations"))" : "")? This will also remove the character from the sidebar. This cannot be undone.")
         }
         // Group delete confirmation
         .alert("Delete Group", isPresented: $showGroupDeleteConfirmation) {
@@ -176,15 +176,10 @@ struct SidebarView: View {
             Divider()
             Button("Delete Conversation", role: .destructive) {
                 pendingDeleteConversationEntry = entry
-                if appState.selectedCharacter?.filename == entry.filename,
-                   let chat = appState.currentChat {
-                    pendingDeleteMessageCount = chat.messages.count
-                } else if let chats = try? appState.chatStorage.listChats(for: entry.card.data.name),
-                          let mostRecent = chats.first,
-                          let chat = try? appState.chatStorage.loadChat(characterName: entry.card.data.name, filename: mostRecent.filename) {
-                    pendingDeleteMessageCount = chat.messages.count
+                if let chats = try? appState.chatStorage.listChats(for: entry.card.data.name) {
+                    pendingDeleteChatCount = chats.count
                 } else {
-                    pendingDeleteMessageCount = 0
+                    pendingDeleteChatCount = 0
                 }
                 showConversationDeleteConfirmation = true
             }
@@ -357,32 +352,32 @@ struct SidebarView: View {
         return handled
     }
 
-    private func deleteCurrentConversation() {
+    private func deleteAllConversations() {
         guard let entry = pendingDeleteConversationEntry else { return }
         let name = entry.card.data.name
 
-        if appState.selectedCharacter?.filename == entry.filename,
-           let chat = appState.currentChat {
-            try? appState.chatStorage.deleteChat(characterName: name, filename: chat.filename)
-            if let chats = try? appState.chatStorage.listChats(for: name),
-               let mostRecent = chats.first {
-                appState.currentChat = try? appState.chatStorage.loadChat(
-                    characterName: name,
-                    filename: mostRecent.filename
-                )
-            } else {
-                appState.currentChat = try? appState.chatStorage.createChat(
-                    characterName: name,
-                    userName: appState.settings.userName,
-                    firstMessage: nil
-                )
-            }
-        } else {
-            if let chats = try? appState.chatStorage.listChats(for: name),
-               let mostRecent = chats.first {
-                try? appState.chatStorage.deleteChat(characterName: name, filename: mostRecent.filename)
+        // Delete all chat files for this character
+        if let chats = try? appState.chatStorage.listChats(for: name) {
+            for chat in chats {
+                try? appState.chatStorage.deleteChat(characterName: name, filename: chat.filename)
             }
         }
+
+        // Clear selection if this character was active
+        if appState.selectedCharacter?.filename == entry.filename {
+            appState.setActiveCharacter(nil)
+            appState.currentChat = nil
+        }
+
+        // Remove the character from the sidebar
+        appState.characters.removeAll { $0.filename == entry.filename }
+
+        // Also delete the character file itself
+        try? appState.characterStorage.delete(filename: entry.filename)
+
+        // Remove from pinned if applicable
+        appState.settings.pinnedCharacters.removeAll { $0 == entry.filename }
+        appState.saveSettings()
 
         pendingDeleteConversationEntry = nil
         refreshChatDates()
