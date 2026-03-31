@@ -86,6 +86,20 @@ struct OnboardingView: View {
                     .font(.title3)
                     .foregroundColor(.secondary)
 
+                Text("Beta")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.15))
+                    .cornerRadius(4)
+
+                Text("SwiftTavern is under active development. Some features may be incomplete and you may encounter bugs.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+
                 Divider().padding(.horizontal, 60)
 
                 VStack(spacing: 6) {

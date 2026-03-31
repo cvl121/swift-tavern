@@ -2,6 +2,8 @@
 
 # SwiftTavern
 
+> **Beta** -- SwiftTavern is under active development. Features may change, and you may encounter bugs. Feedback and bug reports are welcome!
+
 A native macOS app for AI character chat, built with Swift and SwiftUI. Inspired by [SillyTavern](https://github.com/SillyTavern/SillyTavern)
 
 ## Why SwiftTavern?
