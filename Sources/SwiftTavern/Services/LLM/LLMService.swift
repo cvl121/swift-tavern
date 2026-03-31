@@ -52,7 +52,7 @@ enum LLMError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL(let url): return url.isEmpty ? "Invalid API URL" : "Invalid API URL: \(url)"
-        case .invalidResponse(let code, let body): return "API error (\(code)): \(body.truncated(to: 200))"
+        case .invalidResponse(let code, let body): return "API error (\(code)): \(body.truncated(to: 500))"
         case .streamingError(let msg): return "Streaming error: \(msg)"
         case .noContent: return "No content in response"
         case .apiKeyMissing: return "API key is not configured"

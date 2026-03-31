@@ -274,7 +274,18 @@ struct ChatView: View {
         if let error = chatVM.errorMessage {
             StatusBanner(icon: "exclamationmark.triangle.fill", color: .orange) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(error).font(.system(size: 12)).foregroundColor(.secondary).lineLimit(3)
+                    if appState.settings.developerMode {
+                        ScrollView {
+                            Text(error)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 120)
+                    } else {
+                        Text(error).font(.system(size: 12)).foregroundColor(.secondary).lineLimit(3)
+                    }
                     HStack {
                         Spacer()
                         Button("Dismiss") { chatVM.errorMessage = nil }

@@ -32,7 +32,11 @@ final class GeminiService: LLMService {
                     guard let httpResponse = response as? HTTPURLResponse,
                           (200...299).contains(httpResponse.statusCode) else {
                         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                        continuation.finish(throwing: LLMError.invalidResponse(statusCode: statusCode, body: "Gemini error"))
+                        var body = ""
+                        for try await line in bytes.lines {
+                            body += line
+                        }
+                        continuation.finish(throwing: LLMError.invalidResponse(statusCode: statusCode, body: body.isEmpty ? "Gemini error" : body))
                         return
                     }
 
