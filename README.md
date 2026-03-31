@@ -2,7 +2,7 @@
 
 # SwiftTavern
 
-A native macOS app for AI character chat, built with Swift and SwiftUI.
+A native macOS app for AI character chat, built with Swift and SwiftUI. Inspired by [SillyTavern](https://github.com/SillyTavern/SillyTavern)
 
 ## Why SwiftTavern?
 
